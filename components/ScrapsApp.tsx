@@ -8,8 +8,6 @@ import Profile from "./Profile";
 import NotificationsSheet from "./NotificationsSheet";
 import EditProfileSheet from "./EditProfileSheet";
 import { pressFlat } from "./pressableStyles";
-import { Ingredient, IngredientExchangeRequest } from "./types";
-import { getDaysLeft, getUrgency, ingredientMatchKey } from "./ingredientUtils";
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   DistanceUnit,
@@ -104,41 +102,54 @@ export default function ScrapsApp() {
   const [profile, setProfile] = useState<UserProfile>(mockProfile);
   const [notifications, setNotifications] = useState(mockProfile.notifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [exchangeRequests, setExchangeRequests] = useState<
-    IngredientExchangeRequest[]
-  >(mockExchangeRequests);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [exchangeRequests, setExchangeRequests] = useState<
     IngredientExchangeRequest[]
   >(mockExchangeRequests);
   const [notificationPrefs, setNotificationPrefs] =
     useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
-  const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>("mi");
+    const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>("mi");
 
-  const handleAddIngredient = (newIng: Ingredient) => {
-    setIngredients((prev) => {
-      const key = ingredientMatchKey(newIng.name, newIng.expiryDate);
-      const i = prev.findIndex(
-        (x) => ingredientMatchKey(x.name, x.expiryDate) === key
-      );
-      if (i >= 0) {
-        const existing = prev[i];
-        const merged: Ingredient = {
-          ...existing,
-          count: existing.count + newIng.count,
-          estimatedValue: existing.estimatedValue + newIng.estimatedValue,
-          isShared: existing.isShared || newIng.isShared,
-          autoShared: existing.autoShared || newIng.autoShared,
-        };
-        const next = [...prev];
-        next[i] = merged;
-        return next.sort((a, b) => a.daysLeft - b.daysLeft);
-      }
-      const updated = [newIng, ...prev];
-      return updated.sort((a, b) => a.daysLeft - b.daysLeft);
-    });
-    setTimeout(() => setActiveTab("pantry"), 1200);
-  };
+    const ingredientMatchKey = (
+      name: string,
+      expiryDate?: string
+    ) => {
+      return `${name.toLowerCase()}-${expiryDate ?? "none"}`;
+    };
+    
+    const handleAddIngredient = (newIng: Ingredient) => {
+      setIngredients((prev) => {
+        const key = ingredientMatchKey(newIng.name, newIng.expiryDate);
+    
+        const i = prev.findIndex(
+          (x) => ingredientMatchKey(x.name, x.expiryDate) === key
+        );
+    
+        if (i >= 0) {
+          const existing = prev[i];
+    
+          const merged: Ingredient = {
+            ...existing,
+            count: existing.count + newIng.count,
+            estimatedValue:
+              existing.estimatedValue + newIng.estimatedValue,
+            isShared: existing.isShared || newIng.isShared,
+            autoShared: existing.autoShared || newIng.autoShared,
+          };
+    
+          const next = [...prev];
+          next[i] = merged;
+    
+          return next.sort((a, b) => a.daysLeft - b.daysLeft);
+        }
+    
+        const updated = [newIng, ...prev];
+    
+        return updated.sort((a, b) => a.daysLeft - b.daysLeft);
+      });
+    
+      setTimeout(() => setActiveTab("pantry"), 1200);
+    };
 
   const handleRemoveIngredient = (id: string) => {
     setIngredients((prev) => prev.filter((ing) => ing.id !== id));
