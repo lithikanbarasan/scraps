@@ -1,0 +1,22 @@
+{
+    "id": "receipt_2",
+    "store": "Whole Foods Market",
+    "items": [
+        {
+            "name": "Organic Kale",
+            "price": 2.99,
+            "category": "Produce"
+        },
+        {
+            "name": "Almond Butter",
+            "price": 12.99,
+            "category": "Pantry"
+        },
+        {
+            "name": "Greek Yogurt",
+            "price": 5.5,
+            "category": "Dairy"
+        }
+    ],
+    "total": 21.48
+}

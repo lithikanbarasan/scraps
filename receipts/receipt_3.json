@@ -1,0 +1,22 @@
+{
+    "id": "receipt_3",
+    "store": "Whole Foods Market",
+    "items": [
+        {
+            "name": "Chicken Breast",
+            "price": 8.5,
+            "category": "Meat"
+        },
+        {
+            "name": "Sweet Potatoes",
+            "price": 3.2,
+            "category": "Produce"
+        },
+        {
+            "name": "Spinach",
+            "price": 2.5,
+            "category": "Produce"
+        }
+    ],
+    "total": 14.2
+}

@@ -1,0 +1,22 @@
+{
+    "id": "receipt_1",
+    "store": "Whole Foods Market",
+    "items": [
+        {
+            "name": "Organic Bananas",
+            "price": 0.89,
+            "category": "Produce"
+        },
+        {
+            "name": "Whole Milk",
+            "price": 4.49,
+            "category": "Dairy"
+        },
+        {
+            "name": "Avocado Toast Bread",
+            "price": 5.99,
+            "category": "Bakery"
+        }
+    ],
+    "total": 11.37
+}
