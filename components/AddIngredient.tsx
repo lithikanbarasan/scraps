@@ -1,6 +1,6 @@
 "use client";
 import React, { useState } from "react";
-import { Ingredient, UrgencyLevel } from "../types";
+import { Ingredient, UrgencyLevel } from "./types";
 
 interface AddIngredientProps {
   onAdd: (ingredient: Ingredient) => void;
@@ -36,6 +36,18 @@ function getUrgency(days: number): UrgencyLevel {
   if (days <= 5) return "yellow";
   return "green";
 }
+
+const urgencyDot: Record<UrgencyLevel, string> = {
+  red: "bg-red-500",
+  yellow: "bg-amber-400",
+  green: "bg-emerald-500",
+};
+
+const urgencyText: Record<UrgencyLevel, string> = {
+  red: "text-red-600",
+  yellow: "text-amber-600",
+  green: "text-emerald-700",
+};
 
 export default function AddIngredient({ onAdd }: AddIngredientProps) {
   const [tab, setTab] = useState<"manual" | "scan">("manual");
@@ -82,102 +94,139 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
       d.setDate(d.getDate() + 2);
       setExpiryDate(d.toISOString().split("T")[0]);
       setEstimatedValue("3.50");
-    }, 2000);
+    }, 1800);
   };
 
+  const inputClass =
+    "w-full bg-transparent border-0 border-b border-stone-200 focus:border-stone-900 px-0 py-3 text-[15px] text-stone-900 placeholder-stone-300 focus:outline-none focus:ring-0 transition-colors";
+
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div>
-        <h2 className="text-xl font-semibold text-stone-800">Add Ingredient</h2>
-        <p className="text-sm text-stone-400 mt-0.5">Scan or enter manually after shopping</p>
+    <div className="flex flex-col gap-7 px-6 pt-5 pb-2">
+      {/* Header avatars */}
+      <div className="flex items-center justify-between">
+        <div className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-sm font-medium text-stone-600 border border-stone-200">
+          SC
+        </div>
+        <button className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <circle cx="6" cy="12" r="1.5" fill="#0c0a09" />
+            <circle cx="12" cy="12" r="1.5" fill="#0c0a09" />
+            <circle cx="18" cy="12" r="1.5" fill="#0c0a09" />
+          </svg>
+        </button>
       </div>
 
-      {/* Tab switcher */}
-      <div className="flex bg-stone-100 rounded-2xl p-1 gap-1">
-        <button
-          onClick={() => setTab("manual")}
-          className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${
-            tab === "manual" ? "bg-white text-stone-800 shadow-sm" : "text-stone-500"
-          }`}
-        >
-          ✏️ Manual
-        </button>
-        <button
-          onClick={() => setTab("scan")}
-          className={`flex-1 py-2 rounded-xl text-sm font-medium transition-all ${
-            tab === "scan" ? "bg-white text-stone-800 shadow-sm" : "text-stone-500"
-          }`}
-        >
-          📷 Scan Photo
-        </button>
+      {/* Title */}
+      <div>
+        <h1 className="font-display text-[34px] leading-[1.1] tracking-[-0.01em] text-stone-900">
+          Add to pantry.
+        </h1>
+        <p className="text-[13px] text-stone-500 mt-3">
+          Scan your fridge or enter manually.
+        </p>
+      </div>
+
+      {/* Tab switcher — pill style */}
+      <div className="flex gap-2">
+        {(["manual", "scan"] as const).map((t) => {
+          const active = tab === t;
+          return (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 py-2.5 rounded-full text-[13px] font-medium transition-all border ${
+                active
+                  ? "bg-stone-900 text-white border-stone-900"
+                  : "bg-white text-stone-700 border-stone-300"
+              }`}
+            >
+              {t === "manual" ? "Manual entry" : "Scan photo"}
+            </button>
+          );
+        })}
       </div>
 
       {tab === "scan" ? (
         <div className="flex flex-col gap-4">
-          <div className="bg-stone-100 rounded-3xl flex flex-col items-center justify-center py-16 gap-4 border-2 border-dashed border-stone-300">
+          <div className="bg-stone-50 rounded-[22px] aspect-[4/3] flex flex-col items-center justify-center gap-4 border border-stone-200">
             {scanning ? (
               <>
-                <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-stone-500 font-medium">Scanning ingredients...</p>
+                <div className="w-10 h-10 border-2 border-stone-900 border-t-transparent rounded-full animate-spin" />
+                <p className="text-[13px] text-stone-600 font-medium tracking-wide">
+                  Scanning...
+                </p>
               </>
             ) : (
               <>
-                <span className="text-5xl">📷</span>
-                <p className="text-sm text-stone-500 font-medium text-center px-4">
-                  Point at your fridge, pantry, or receipt
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#57534e" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="6" width="18" height="14" rx="2" />
+                  <circle cx="12" cy="13" r="3.5" />
+                  <path d="M9 6l1.5-2h3L15 6" />
+                </svg>
+                <p className="text-[13px] text-stone-500 text-center px-6 leading-relaxed">
+                  Point at your fridge,
+                  <br />
+                  pantry, or receipt.
                 </p>
                 <button
                   onClick={handleSimulateScan}
-                  className="bg-green-600 text-white px-6 py-2.5 rounded-xl text-sm font-semibold"
+                  className="bg-stone-900 text-white px-6 py-2.5 rounded-full text-[13px] font-medium"
                 >
-                  Simulate Scan
+                  Simulate scan
                 </button>
               </>
             )}
           </div>
-          <div className="bg-amber-50 border border-amber-100 rounded-2xl p-3">
-            <p className="text-xs text-amber-700 font-medium">
-              💡 AI will identify your ingredient and suggest a typical shelf life. You can confirm or edit before saving.
-            </p>
-          </div>
+          <p className="text-[12px] text-stone-500 leading-relaxed text-center px-4">
+            AI identifies your ingredient and suggests a typical shelf life. You confirm before saving.
+          </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-5">
           {/* Name */}
           <div>
-            <label className="text-xs font-semibold text-stone-500 mb-1 block">Ingredient name</label>
+            <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
+              Ingredient
+            </label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Baby Spinach"
-              className="w-full bg-white border border-stone-200 rounded-xl px-4 py-3 text-sm text-stone-800 placeholder-stone-300 focus:outline-none focus:ring-2 focus:ring-green-400"
+              placeholder="Baby spinach"
+              className={inputClass}
             />
             {name && (
-              <p className="text-xs text-stone-400 mt-1 ml-1">
-                {getEmoji(name)} Detected: {getEmoji(name) !== "🥫" ? name : "unknown item"}
+              <p className="text-[11px] text-stone-400 mt-1.5 flex items-center gap-1.5">
+                <span>{getEmoji(name)}</span>
+                <span>
+                  {getEmoji(name) !== "🥫" ? "Recognized" : "Will use generic icon"}
+                </span>
               </p>
             )}
           </div>
 
           {/* Quantity + Unit */}
-          <div className="flex gap-2">
+          <div className="flex gap-5">
             <div className="flex-1">
-              <label className="text-xs font-semibold text-stone-500 mb-1 block">Quantity</label>
+              <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
+                Quantity
+              </label>
               <input
                 type="number"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 placeholder="1"
-                className="w-full bg-white border border-stone-200 rounded-xl px-4 py-3 text-sm text-stone-800 placeholder-stone-300 focus:outline-none focus:ring-2 focus:ring-green-400"
+                className={inputClass}
               />
             </div>
             <div className="flex-1">
-              <label className="text-xs font-semibold text-stone-500 mb-1 block">Unit</label>
+              <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
+                Unit
+              </label>
               <select
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
-                className="w-full bg-white border border-stone-200 rounded-xl px-4 py-3 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-green-400"
+                className={`${inputClass} appearance-none cursor-pointer`}
               >
                 {["count", "oz", "lbs", "kg", "g", "pint", "bag", "gallon", "cup", "bunch"].map((u) => (
                   <option key={u}>{u}</option>
@@ -186,59 +235,66 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
             </div>
           </div>
 
-          {/* Expiry date */}
+          {/* Expiry */}
           <div>
-            <label className="text-xs font-semibold text-stone-500 mb-1 block">Expiry date</label>
+            <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
+              Expires
+            </label>
             <input
               type="date"
               value={expiryDate}
               onChange={(e) => setExpiryDate(e.target.value)}
-              className="w-full bg-white border border-stone-200 rounded-xl px-4 py-3 text-sm text-stone-800 focus:outline-none focus:ring-2 focus:ring-green-400"
+              className={inputClass}
             />
             {expiryDate && (
-              <div className={`mt-1.5 inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                getUrgency(getDaysLeft(expiryDate)) === "red"
-                  ? "bg-red-100 text-red-700"
-                  : getUrgency(getDaysLeft(expiryDate)) === "yellow"
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-green-100 text-green-700"
-              }`}>
-                {getDaysLeft(expiryDate) <= 0
-                  ? "Expires today!"
-                  : `${getDaysLeft(expiryDate)} days left`}
-                {getUrgency(getDaysLeft(expiryDate)) === "red" && " · Will auto-post to friends"}
+              <div className="mt-2 flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full ${urgencyDot[getUrgency(getDaysLeft(expiryDate))]}`} />
+                <span className={`text-[12px] font-medium ${urgencyText[getUrgency(getDaysLeft(expiryDate))]}`}>
+                  {getDaysLeft(expiryDate) <= 0
+                    ? "Expires today"
+                    : `${getDaysLeft(expiryDate)} days left`}
+                </span>
+                {getUrgency(getDaysLeft(expiryDate)) === "red" && (
+                  <span className="text-[11px] text-stone-400">
+                    · Will auto-share
+                  </span>
+                )}
               </div>
             )}
           </div>
 
-          {/* Estimated value */}
+          {/* Value */}
           <div>
-            <label className="text-xs font-semibold text-stone-500 mb-1 block">Estimated value ($)</label>
-            <input
-              type="number"
-              value={estimatedValue}
-              onChange={(e) => setEstimatedValue(e.target.value)}
-              placeholder="0.00"
-              step="0.01"
-              className="w-full bg-white border border-stone-200 rounded-xl px-4 py-3 text-sm text-stone-800 placeholder-stone-300 focus:outline-none focus:ring-2 focus:ring-green-400"
-            />
+            <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
+              Estimated value
+            </label>
+            <div className="relative">
+              <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[15px] text-stone-400 pt-3">
+                $
+              </span>
+              <input
+                type="number"
+                value={estimatedValue}
+                onChange={(e) => setEstimatedValue(e.target.value)}
+                placeholder="0.00"
+                step="0.01"
+                className={`${inputClass} pl-4`}
+              />
+            </div>
           </div>
 
           {/* Submit */}
           <button
             onClick={handleAdd}
             disabled={!name || !expiryDate}
-            className="w-full bg-green-600 disabled:bg-stone-200 disabled:text-stone-400 text-white font-semibold py-3.5 rounded-2xl text-sm transition-all active:scale-95 mt-1"
+            className="w-full bg-stone-900 disabled:bg-stone-200 disabled:text-stone-400 text-white font-medium py-3.5 rounded-full text-[13px] tracking-wide transition-all active:scale-[0.99] mt-2"
           >
-            {success ? "✓ Added to pantry!" : "Add to Pantry"}
+            {success ? "Added ✓" : "Add to pantry"}
           </button>
 
-          {/* Receipt stretch goal hint */}
-          <div className="bg-stone-50 border border-stone-100 rounded-2xl p-3 text-center">
-            <p className="text-xs text-stone-400">
-              📄 <span className="font-medium">Receipt scan</span> coming soon — auto-imports all items at once
-            </p>
-          </div>
+          <p className="text-[11px] text-stone-400 text-center mt-1">
+            Receipt scan coming soon.
+          </p>
         </div>
       )}
     </div>

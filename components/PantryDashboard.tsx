@@ -1,156 +1,189 @@
 "use client";
 import React, { useState } from "react";
-import { Ingredient, UrgencyLevel } from "../types";
+import { Ingredient, UrgencyLevel } from "./types";
 
 interface PantryDashboardProps {
   ingredients: Ingredient[];
   onToggleShare: (id: string) => void;
 }
 
-const urgencyConfig: Record<UrgencyLevel, { bg: string; border: string; badge: string; badgeText: string; label: string }> = {
-  red: {
-    bg: "bg-red-50",
-    border: "border-l-4 border-l-red-400",
-    badge: "bg-red-100 text-red-700",
-    badgeText: "text-red-700",
-    label: "Urgent",
-  },
-  yellow: {
-    bg: "bg-amber-50",
-    border: "border-l-4 border-l-amber-400",
-    badge: "bg-amber-100 text-amber-700",
-    badgeText: "text-amber-700",
-    label: "Soon",
-  },
-  green: {
-    bg: "bg-white",
-    border: "border-l-4 border-l-green-400",
-    badge: "bg-green-100 text-green-700",
-    badgeText: "text-green-700",
-    label: "Fresh",
-  },
+// URGENCY = the only semantic color in the entire app
+const urgencyDot: Record<UrgencyLevel, string> = {
+  red: "bg-red-500",
+  yellow: "bg-amber-400",
+  green: "bg-emerald-500",
 };
 
-export default function PantryDashboard({ ingredients, onToggleShare }: PantryDashboardProps) {
+const urgencyText: Record<UrgencyLevel, string> = {
+  red: "text-red-600",
+  yellow: "text-amber-600",
+  green: "text-stone-400",
+};
+
+export default function PantryDashboard({
+  ingredients,
+  onToggleShare,
+}: PantryDashboardProps) {
   const [filter, setFilter] = useState<"all" | UrgencyLevel>("all");
 
   const sorted = [...ingredients].sort((a, b) => a.daysLeft - b.daysLeft);
-  const filtered = filter === "all" ? sorted : sorted.filter((i) => i.urgency === filter);
+  const filtered =
+    filter === "all" ? sorted : sorted.filter((i) => i.urgency === filter);
 
   const totalValue = ingredients.reduce((s, i) => s + i.estimatedValue, 0);
-  const atRisk = ingredients.filter((i) => i.urgency !== "green").reduce((s, i) => s + i.estimatedValue, 0);
+  const atRisk = ingredients
+    .filter((i) => i.urgency !== "green")
+    .reduce((s, i) => s + i.estimatedValue, 0);
   const redCount = ingredients.filter((i) => i.urgency === "red").length;
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="bg-white rounded-2xl p-3 border border-stone-100 shadow-sm">
-          <p className="text-[10px] text-stone-400 font-medium mb-1">Pantry value</p>
-          <p className="text-lg font-semibold text-stone-800">${totalValue.toFixed(0)}</p>
+    <div className="flex flex-col gap-7 px-6 pt-5 pb-2">
+      {/* Editorial header — avatar circle on left, dots menu on right (matches image 1) */}
+      <div className="flex items-center justify-between">
+        <div className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-sm font-medium text-stone-600 border border-stone-200">
+          SC
         </div>
-        <div className="bg-red-50 rounded-2xl p-3 border border-red-100 shadow-sm">
-          <p className="text-[10px] text-red-400 font-medium mb-1">At risk</p>
-          <p className="text-lg font-semibold text-red-600">${atRisk.toFixed(0)}</p>
-        </div>
-        <div className="bg-green-50 rounded-2xl p-3 border border-green-100 shadow-sm">
-          <p className="text-[10px] text-green-600 font-medium mb-1">Saved / mo</p>
-          <p className="text-lg font-semibold text-green-700">$42</p>
-        </div>
+        <button className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <circle cx="6" cy="12" r="1.5" fill="#0c0a09" />
+            <circle cx="12" cy="12" r="1.5" fill="#0c0a09" />
+            <circle cx="18" cy="12" r="1.5" fill="#0c0a09" />
+          </svg>
+        </button>
       </div>
 
-      {/* Recipes available banner */}
-      <div className="bg-green-50 border border-green-100 rounded-2xl px-4 py-3 flex items-center gap-2">
-        <span className="text-xl">🍽️</span>
-        <p className="text-sm font-medium text-green-800">You can make <span className="font-bold">12 recipes</span> right now</p>
+      {/* Big serif title */}
+      <div>
+        <h1 className="font-display text-[34px] leading-[1.1] tracking-[-0.01em] text-stone-900">
+          Good morning,
+          <br />
+          Sarah.
+        </h1>
+        <p className="text-[13px] text-stone-500 mt-3 leading-relaxed">
+          You have <span className="text-stone-900 font-medium">{redCount} items</span>{" "}
+          to use this week.
+        </p>
       </div>
 
-      {/* Urgent warning */}
-      {redCount > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 flex items-start gap-3">
-          <span className="text-lg mt-0.5">⚠️</span>
+      {/* Search-style stat row with hairline underline (echoes the search bar in image 1) */}
+      <div className="border-b border-stone-200 pb-3 flex items-end justify-between">
+        <div className="flex items-baseline gap-5">
           <div>
-            <p className="text-sm font-semibold text-red-700">{redCount} item{redCount > 1 ? "s" : ""} expiring very soon</p>
-            <p className="text-xs text-red-500 mt-0.5">These have been posted to your friends board automatically</p>
+            <p className="font-display text-[22px] text-stone-900 tabular-nums leading-none">
+              ${totalValue.toFixed(0)}
+            </p>
+            <p className="text-[10px] uppercase tracking-[0.15em] text-stone-400 mt-1.5">
+              Pantry value
+            </p>
+          </div>
+          <div className="w-px h-9 bg-stone-200" />
+          <div>
+            <p className="font-display text-[22px] text-stone-900 tabular-nums leading-none">
+              ${atRisk.toFixed(0)}
+            </p>
+            <p className="text-[10px] uppercase tracking-[0.15em] text-stone-400 mt-1.5">
+              At risk
+            </p>
           </div>
         </div>
-      )}
-
-      {/* Filter pills */}
-      <div className="flex gap-2">
-        {(["all", "red", "yellow", "green"] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-              filter === f
-                ? f === "all"
-                  ? "bg-stone-800 text-white"
-                  : f === "red"
-                  ? "bg-red-500 text-white"
-                  : f === "yellow"
-                  ? "bg-amber-400 text-white"
-                  : "bg-green-600 text-white"
-                : "bg-stone-100 text-stone-500"
-            }`}
-          >
-            {f === "all" ? "All" : f === "red" ? "🔴 Urgent" : f === "yellow" ? "🟡 Soon" : "🟢 Fresh"}
-          </button>
-        ))}
+        <button className="w-9 h-9 flex items-center justify-center text-stone-500">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <line x1="4" y1="8" x2="20" y2="8" />
+            <line x1="7" y1="12" x2="17" y2="12" />
+            <line x1="10" y1="16" x2="14" y2="16" />
+          </svg>
+        </button>
       </div>
 
-      {/* Section label */}
-      {filter === "all" && (
-        <p className="text-xs font-semibold text-stone-400 uppercase tracking-wider px-1">
-          Use First
-        </p>
-      )}
-
-      {/* Ingredient list */}
-      <div className="flex flex-col gap-2">
-        {filtered.map((ing) => {
-          const cfg = urgencyConfig[ing.urgency];
+      {/* Pill filter row — overflow scroll (matches image 1) */}
+      <div className="flex gap-2 -mx-6 px-6 overflow-x-auto scrollbar-none">
+        {(["all", "red", "yellow", "green"] as const).map((f) => {
+          const active = filter === f;
+          const label =
+            f === "all" ? "All"
+            : f === "red" ? "Urgent"
+            : f === "yellow" ? "Soon"
+            : "Fresh";
           return (
-            <div
-              key={ing.id}
-              className={`${cfg.bg} ${cfg.border} rounded-2xl p-3 flex items-center gap-3 shadow-sm`}
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`flex-shrink-0 px-5 py-2 rounded-full text-[13px] font-medium transition-all flex items-center gap-2 border ${
+                active
+                  ? "bg-stone-900 text-white border-stone-900"
+                  : "bg-white text-stone-700 border-stone-300"
+              }`}
             >
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 ${
-                ing.urgency === "red" ? "bg-red-100" : ing.urgency === "yellow" ? "bg-amber-100" : "bg-green-100"
-              }`}>
-                {ing.emoji}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-stone-800 truncate">{ing.name}</p>
-                <p className="text-xs text-stone-400 mt-0.5">
-                  {ing.quantity} {ing.unit} · ~${ing.estimatedValue.toFixed(2)}
-                </p>
-              </div>
-              <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg.badge}`}>
-                  {ing.daysLeft === 0 ? "Today!" : ing.daysLeft === 1 ? "1 day" : `${ing.daysLeft} days`}
-                </span>
-                {!ing.autoShared && (
-                  <button
-                    onClick={() => onToggleShare(ing.id)}
-                    className={`text-[10px] font-medium px-2 py-0.5 rounded-full transition-all ${
-                      ing.isShared
-                        ? "bg-green-100 text-green-700"
-                        : "bg-stone-100 text-stone-500"
-                    }`}
-                  >
-                    {ing.isShared ? "✓ Shared" : "Share"}
-                  </button>
-                )}
-                {ing.autoShared && (
-                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-600">
-                    Auto-posted
-                  </span>
-                )}
-              </div>
-            </div>
+              {f !== "all" && (
+                <span className={`w-1.5 h-1.5 rounded-full ${urgencyDot[f]}`} />
+              )}
+              {label}
+            </button>
           );
         })}
+      </div>
+
+      {/* "Use first" section title — serif, matches "Recommended for you" pattern */}
+      <div className="flex items-baseline justify-between -mb-3">
+        <h2 className="font-display text-[20px] text-stone-900 tracking-tight">
+          {filter === "all" ? "Use first" : filter === "red" ? "Urgent items" : filter === "yellow" ? "Coming up" : "Plenty of time"}
+        </h2>
+        <span className="text-[12px] text-stone-400 tabular-nums">{filtered.length} items</span>
+      </div>
+
+      {/* Ingredient list — flat with hairline dividers */}
+      <div className="flex flex-col">
+        {filtered.map((ing, idx) => (
+          <div
+            key={ing.id}
+            className={`flex items-center gap-4 py-4 ${
+              idx !== 0 ? "border-t border-stone-100" : ""
+            }`}
+          >
+            {/* Emoji — neutral disc */}
+            <div className="w-12 h-12 rounded-full bg-stone-50 flex items-center justify-center text-2xl flex-shrink-0">
+              {ing.emoji}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgencyDot[ing.urgency]}`} />
+                <p className="text-[15px] text-stone-900 truncate font-medium">
+                  {ing.name}
+                </p>
+              </div>
+              <p className="text-[12px] text-stone-400 mt-0.5 ml-3.5">
+                {ing.quantity} {ing.unit} · ${ing.estimatedValue.toFixed(2)}
+              </p>
+            </div>
+
+            <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+              <span className={`text-[13px] tabular-nums font-medium ${urgencyText[ing.urgency]}`}>
+                {ing.daysLeft === 0
+                  ? "Today"
+                  : ing.daysLeft === 1
+                  ? "1 day"
+                  : `${ing.daysLeft} days`}
+              </span>
+              {ing.autoShared ? (
+                <span className="text-[10px] text-stone-400 tracking-wide">
+                  Auto-shared
+                </span>
+              ) : (
+                <button
+                  onClick={() => onToggleShare(ing.id)}
+                  className={`text-[10px] tracking-wide transition-all ${
+                    ing.isShared
+                      ? "text-stone-900 font-medium"
+                      : "text-stone-400 hover:text-stone-700"
+                  }`}
+                >
+                  {ing.isShared ? "Shared" : "Share"}
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
