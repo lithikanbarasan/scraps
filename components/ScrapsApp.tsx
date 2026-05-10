@@ -14,7 +14,6 @@ import {
   Ingredient,
   IngredientExchangeRequest,
   NotificationPreferences,
-  Recipe,
   UserProfile,
 } from "./types";
 import { filterNotificationsByPreferences } from "./notificationsFilter";
