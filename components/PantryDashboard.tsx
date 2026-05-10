@@ -9,6 +9,7 @@ interface PantryDashboardProps {
   userFirstName: string;
   onToggleShare: (id: string) => void;
   onUpdateIngredient: (id: string, updates: Partial<Ingredient>) => void;
+  onRemoveIngredient: (id: string) => void;
 }
 
 const urgencyDot: Record<UrgencyLevel, string> = {
@@ -28,6 +29,7 @@ export default function PantryDashboard({
   userFirstName,
   onToggleShare,
   onUpdateIngredient,
+  onRemoveIngredient,
 }: PantryDashboardProps) {
   const [filter, setFilter] = useState<"all" | UrgencyLevel>("all");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -75,6 +77,14 @@ export default function PantryDashboard({
       estimatedValue: Number.isFinite(cost) ? cost : 0,
     });
     setDetailId(null);
+  };
+
+  const adjustCount = (id: string, delta: number) => {
+    const ing = ingredients.find((i) => i.id === id);
+    if (!ing) return;
+    const next = ing.count + delta;
+    onUpdateIngredient(id, { count: next });
+    if (next <= 0) setDetailId(null);
   };
 
   const inputClass =
@@ -194,6 +204,7 @@ export default function PantryDashboard({
                 </p>
               </div>
               <p className="text-[12px] text-stone-400 mt-0.5 ml-3.5">
+                {ing.count > 1 ? `${ing.count} × ` : ""}
                 {ing.quantity} {ing.unit} · ${ing.estimatedValue.toFixed(2)}
               </p>
             </div>
@@ -251,12 +262,40 @@ export default function PantryDashboard({
                   {detail.name}
                 </h2>
                 <p className="text-[13px] text-stone-500 mt-1">
+                  {detail.count > 1 ? `${detail.count} × ` : ""}
                   {detail.quantity} {detail.unit}
                 </p>
               </div>
             </div>
 
             <div className="flex flex-col gap-5">
+              <div>
+                <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
+                  How many (tap − / + after using one)
+                </label>
+                <div className="flex items-center gap-4 mt-2">
+                  <button
+                    type="button"
+                    aria-label="Decrease count"
+                    onClick={() => adjustCount(detail.id, -1)}
+                    className={`w-11 h-11 rounded-full border border-stone-300 text-stone-900 text-xl font-medium leading-none flex items-center justify-center ${pressOutline}`}
+                  >
+                    −
+                  </button>
+                  <span className="font-display text-[28px] text-stone-900 tabular-nums min-w-[2ch] text-center">
+                    {detail.count}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Increase count"
+                    onClick={() => adjustCount(detail.id, 1)}
+                    className={`w-11 h-11 rounded-full border border-stone-300 text-stone-900 text-xl font-medium leading-none flex items-center justify-center ${pressOutline}`}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
                   Expiration date
@@ -315,6 +354,16 @@ export default function PantryDashboard({
                 className={`w-full py-3 rounded-full text-[13px] font-medium border border-stone-300 text-stone-700 ${pressOutline}`}
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onRemoveIngredient(detail.id);
+                  setDetailId(null);
+                }}
+                className={`w-full py-3 rounded-full text-[13px] font-medium border border-red-200 text-red-700 bg-red-50/80 ${pressOutline}`}
+              >
+                Remove from pantry
               </button>
             </div>
           </div>

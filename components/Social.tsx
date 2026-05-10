@@ -232,6 +232,7 @@ export default function Social({
                     </p>
                   </div>
                   <p className="text-[12px] text-stone-400 mt-0.5 ml-3.5">
+                    {ing.count > 1 ? `${ing.count} × ` : ""}
                     {ing.quantity} {ing.unit}
                   </p>
                 </div>

@@ -13,3 +13,14 @@ export function getUrgency(days: number): UrgencyLevel {
   if (days <= 5) return "yellow";
   return "green";
 }
+
+/** Stable key for merging duplicate pantry lines (name + expiry). */
+export function ingredientMatchKey(name: string, expiryDate: string): string {
+  return `${name.trim().toLowerCase()}|${expiryDate}`;
+}
+
+/** How many units this add contributes (quantity field on the form). */
+export function parseAddBatchCount(quantity: string): number {
+  const n = Math.floor(Number.parseFloat(quantity));
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
