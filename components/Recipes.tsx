@@ -1,8 +1,9 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type {
   CuisineTag,
   DietaryTag,
+  Ingredient,
   IngredientMatchKind,
   Recipe,
 } from "./types";
@@ -10,7 +11,14 @@ import { pressDark, pressOutline } from "./pressableStyles";
 import { findUseSource, isExpiringIngredient } from "./recipeIngredientMeta";
 
 interface RecipesProps {
-  recipes: Recipe[];
+  pantryIngredients: Ingredient[];
+}
+
+function pantryFetchKey(ingredients: Ingredient[]): string {
+  return [...ingredients]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((i) => `${i.name}|${i.count}|${i.urgency}|${i.daysLeft}`)
+    .join(";");
 }
 
 const cardTints = [
@@ -55,6 +63,7 @@ const MATCH_OPTIONS: {
   { id: "friends_expiring", label: "Uses friends expiring items" },
 ];
 
+
 function RecipeDetailSheet({
   recipe,
   onClose,
@@ -98,23 +107,42 @@ function RecipeDetailSheet({
           </button>
         </div>
         <div className="overflow-y-auto px-6 py-5 pb-8 flex flex-col gap-6">
-          <div className="flex items-center gap-4">
-            <span className="text-6xl">{recipe.emoji}</span>
-            <div className="text-[12px] text-stone-500 flex flex-wrap gap-x-2 gap-y-1">
+          {recipe.imageUrl ? (
+            <div className="rounded-2xl overflow-hidden border border-stone-100 -mt-1">
+              <img
+                src={recipe.imageUrl}
+                alt=""
+                className="w-full aspect-[16/10] object-cover"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center gap-4">
+              <span className="text-6xl">{recipe.emoji}</span>
+              <div className="text-[12px] text-stone-500 flex flex-wrap gap-x-2 gap-y-1">
+                <span>{recipe.cookTime}</span>
+                <span>·</span>
+                <span>{recipe.difficulty}</span>
+                <span>·</span>
+                <span className="tabular-nums">Saves ~${recipe.savingsEstimate}</span>
+              </div>
+            </div>
+          )}
+          {recipe.imageUrl && (
+            <div className="text-[12px] text-stone-500 flex flex-wrap gap-x-2 gap-y-1 -mt-2">
               <span>{recipe.cookTime}</span>
               <span>·</span>
               <span>{recipe.difficulty}</span>
               <span>·</span>
               <span className="tabular-nums">Saves ~${recipe.savingsEstimate}</span>
             </div>
-          </div>
+          )}
 
           <section>
             <h3 className="text-[11px] uppercase tracking-[0.12em] text-stone-400 font-medium mb-3">
               Ingredients
             </h3>
             <ul className="flex flex-col gap-3">
-              {recipe.allIngredients.map((ing) => {
+              {recipe.allIngredients.map((ing, i) => {
                 const exp = isExpiringIngredient(recipe, ing);
                 const src = findUseSource(recipe, ing);
                 const rk =
@@ -125,7 +153,7 @@ function RecipeDetailSheet({
 
                 return (
                   <li
-                    key={ing}
+                  key={`${ing}-${i}`}
                     className="border border-stone-100 rounded-xl px-3 py-2.5 bg-stone-50/50"
                   >
                     <div className="flex items-start gap-2">
@@ -233,7 +261,11 @@ function recipePassesFilters(
   return true;
 }
 
-export default function Recipes({ recipes }: RecipesProps) {
+export default function Recipes({ pantryIngredients }: RecipesProps) {
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   const [filterOpen, setFilterOpen] = useState(false);
   const [dietary, setDietary] = useState<Set<DietaryTag>>(new Set());
   const [timeId, setTimeId] = useState<string | null>(null);
@@ -244,10 +276,47 @@ export default function Recipes({ recipes }: RecipesProps) {
   const [match, setMatch] = useState<IngredientMatchKind | null>(null);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
 
+  const [searchQuery, setSearchQuery] = useState("");
   const [detailRecipe, setDetailRecipe] = useState<Recipe | null>(null);
 
   const [cooked, setCooked] = useState<Set<string>>(new Set());
-  const [favorites, setFavorites] = useState<Set<string>>(new Set(["1"]));
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+
+  const [visibleCount, setVisibleCount] = useState(6);
+
+  const fetchKey = useMemo(
+    () => pantryFetchKey(pantryIngredients),
+    [pantryIngredients]
+  );
+
+  useEffect(() => {
+    
+    const ac = new AbortController();
+    setLoading(true);
+    setFetchError(null);
+    fetch("/api/themealdb/recipes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ingredients: pantryIngredients }),
+      signal: ac.signal,
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error ?? "Could not load recipes");
+        }
+        setRecipes(data.recipes ?? []);
+      })
+      .catch((e: Error) => {
+        if (e.name === "AbortError") return;
+        setFetchError(e.message ?? "Could not load recipes");
+        setRecipes([]);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false);
+      });
+    return () => ac.abort();
+  }, [fetchKey, pantryIngredients]);
 
   const activeFilterCount = useMemo(() => {
     let n = dietary.size;
@@ -259,9 +328,11 @@ export default function Recipes({ recipes }: RecipesProps) {
     return n;
   }, [dietary, timeId, difficulty, cuisine, match, favoritesOnly]);
 
-  const filtered = useMemo(
-    () =>
-      recipes.filter((r) =>
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+  
+    return recipes
+      .filter((r) =>
         recipePassesFilters(
           r,
           dietary,
@@ -272,15 +343,48 @@ export default function Recipes({ recipes }: RecipesProps) {
           favoritesOnly,
           favorites
         )
-      ),
-    [recipes, dietary, timeId, difficulty, cuisine, match, favoritesOnly, favorites]
-  );
-
+      )
+      .filter(
+        (r) =>
+          !q ||
+          r.name.toLowerCase().includes(q) ||
+          r.allIngredients.some((ing) =>
+            ing.toLowerCase().includes(q)
+          )
+      );
+  }, [
+    recipes,
+    dietary,
+    timeId,
+    difficulty,
+    cuisine,
+    match,
+    favoritesOnly,
+    favorites,
+    searchQuery,
+  ]);
+  
+  const visibleRecipes = filtered.slice(0, visibleCount);
+  
+  useEffect(() => {
+    setVisibleCount(6);
+  }, [
+    searchQuery,
+    dietary,
+    timeId,
+    difficulty,
+    cuisine,
+    match,
+    favoritesOnly,
+  ]);
+  
   const toggleDietary = (tag: DietaryTag) => {
     setDietary((prev) => {
       const next = new Set(prev);
+  
       if (next.has(tag)) next.delete(tag);
       else next.add(tag);
+  
       return next;
     });
   };
@@ -307,9 +411,7 @@ export default function Recipes({ recipes }: RecipesProps) {
         <h1 className="font-display text-[34px] leading-[1.1] tracking-[-0.01em] text-stone-900">
           Cook tonight.
         </h1>
-        <p className="text-[13px] text-stone-500 mt-3">
-          Recipes that use what&apos;s expiring.
-        </p>
+        
       </div>
 
       <div className="border-b border-stone-200 pb-3 flex items-center gap-3">
@@ -327,10 +429,18 @@ export default function Recipes({ recipes }: RecipesProps) {
         </svg>
         <input
           type="text"
-          placeholder="Search recipes"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search recipes or ingredients"
           className="flex-1 bg-transparent text-[14px] text-stone-800 placeholder-stone-400 focus:outline-none"
         />
       </div>
+
+      {fetchError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-900">
+          {fetchError}. Check your connection and try switching back to Cook.
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button
@@ -568,7 +678,13 @@ export default function Recipes({ recipes }: RecipesProps) {
       </div>
 
       <div className="flex flex-col gap-5">
-        {filtered.map((recipe, idx) => {
+        {loading && (
+          <p className="text-[13px] text-stone-500 text-center py-10">
+            Loading recipes from TheMealDB…
+          </p>
+        )}
+        {!loading && 
+          visibleRecipes.map((recipe, idx) => {
           const isCookedNow = cooked.has(recipe.id);
           const isFav = favorites.has(recipe.id);
 
@@ -586,22 +702,32 @@ export default function Recipes({ recipes }: RecipesProps) {
                   className={`w-full text-left flex flex-col gap-3 rounded-2xl -mx-1 px-1 py-0.5 ${pressOutline}`}
                 >
                   <div
-                    className={`relative ${cardTints[idx % cardTints.length]} rounded-[22px] aspect-[4/3] flex items-center justify-center overflow-hidden pointer-events-none`}
+                    className={`relative ${recipe.imageUrl ? "bg-stone-100" : cardTints[idx % cardTints.length]} rounded-[22px] aspect-[4/3] flex items-center justify-center overflow-hidden pointer-events-none`}
                   >
-                    <span
-                      className="text-8xl"
-                      style={{
-                        filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.08))",
-                      }}
-                    >
-                      {recipe.emoji}
-                    </span>
-                    <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm rounded-full px-2.5 py-1 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                      <span className="text-[10px] font-medium text-stone-800 tracking-wide">
-                        Uses {recipe.expiringIngredients.length} expiring
+                    {recipe.imageUrl ? (
+                      <img
+                        src={recipe.imageUrl}
+                        alt=""
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span
+                        className="text-8xl"
+                        style={{
+                          filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.08))",
+                        }}
+                      >
+                        {recipe.emoji}
                       </span>
-                    </div>
+                    )}
+                    {recipe.expiringIngredients.length > 0 && (
+                      <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm rounded-full px-2.5 py-1 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                        <span className="text-[10px] font-medium text-stone-800 tracking-wide">
+                          Uses {recipe.expiringIngredients.length} expiring
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="pointer-events-none">
@@ -624,12 +750,12 @@ export default function Recipes({ recipes }: RecipesProps) {
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 pointer-events-none">
-                    {recipe.allIngredients.map((ing) => {
+                    {recipe.allIngredients.map((ing, ong) => {
                       const isExpiring =
-                        recipe.expiringIngredients.includes(ing);
+                        isExpiringIngredient(recipe, ing);
                       return (
                         <span
-                          key={ing}
+                          key={`${ing}-${ong}`}
                           className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-stone-200 text-stone-700 inline-flex items-center gap-1.5"
                         >
                           {isExpiring && (
@@ -691,10 +817,23 @@ export default function Recipes({ recipes }: RecipesProps) {
           onClose={() => setDetailRecipe(null)}
         />
       )}
-
-      {filtered.length === 0 && (
+      {!loading && visibleCount < filtered.length && (
+  <button
+    type="button"
+    onClick={() => setVisibleCount((n) => n + 6)}
+    className={`w-full py-3 text-[13px] font-medium tracking-wide bg-white text-stone-600 hover:bg-stone-50 ${pressOutline}`}
+  >
+    Load more recipes
+  </button>
+)}
+      {!loading && filtered.length === 0 && recipes.length > 0 && (
         <p className="text-[14px] text-stone-500 text-center py-8">
           No recipes match these filters. Try adjusting or clearing filters.
+        </p>
+      )}
+      {!loading && recipes.length === 0 && !fetchError && (
+        <p className="text-[14px] text-stone-500 text-center py-8">
+          No recipes returned. Try again in a moment.
         </p>
       )}
     </div>

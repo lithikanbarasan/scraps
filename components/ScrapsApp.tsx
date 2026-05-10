@@ -20,7 +20,6 @@ import { filterNotificationsByPreferences } from "./notificationsFilter";
 import { getDaysLeft, getUrgency } from "./ingredientUtils";
 import {
   mockIngredients,
-  mockRecipes,
   mockFriendPosts,
   mockExchangeRequests,
   mockProfile,
@@ -336,7 +335,7 @@ export default function ScrapsApp() {
               <AddIngredient onAdd={handleAddIngredient} />
             )}
             {activeTab === "recipes" && (
-              <Recipes recipes={mockRecipes} />
+              <Recipes pantryIngredients={ingredients} />
             )}
             {activeTab === "social" && (
               <Social

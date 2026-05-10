@@ -110,7 +110,7 @@ export default function Social({
     <div className="flex flex-col gap-7 px-6 pt-5 pb-2">
       <div>
         <h1 className="font-display text-[34px] leading-[1.1] tracking-[-0.01em] text-stone-900">
-          Friends.
+          Community Pantry.
         </h1>
         <p className="text-[13px] text-stone-500 mt-3">
           Claim what&apos;s expiring or share your surplus.
