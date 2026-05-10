@@ -181,11 +181,18 @@ export default function PantryDashboard({
 
       <div className="flex flex-col">
         {filtered.map((ing, idx) => (
-          <button
+          <div
             key={ing.id}
-            type="button"
+            role="button"
+            tabIndex={0}
             onClick={() => openDetail(ing.id)}
-            className={`flex items-center gap-4 py-4 w-full text-left rounded-lg -mx-1 px-1 ${pressOutline} ${
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openDetail(ing.id);
+              }
+            }}
+            className={`flex items-center gap-4 py-4 w-full text-left rounded-lg -mx-1 px-1 cursor-pointer ${pressOutline} ${
               idx !== 0 ? "border-t border-stone-100" : ""
             }`}
           >
@@ -238,7 +245,7 @@ export default function PantryDashboard({
                 </button>
               )}
             </div>
-          </button>
+          </div>
         ))}
       </div>
 
