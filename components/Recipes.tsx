@@ -3,23 +3,20 @@ import React, { useEffect, useMemo, useState } from "react";
 import type {
   CuisineTag,
   DietaryTag,
+  FriendPost,
   Ingredient,
   IngredientMatchKind,
   Recipe,
 } from "./types";
 import { pressDark, pressOutline } from "./pressableStyles";
 import { findUseSource, isExpiringIngredient } from "./recipeIngredientMeta";
+import { mockFriendPosts } from "./mockData";
 
 interface RecipesProps {
   pantryIngredients: Ingredient[];
-}
-
-function pantryFetchKey(ingredients: Ingredient[]): string {
-  return ingredients
-    .filter(Boolean)
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((i) => `${i.name}|${i.count}|${i.urgency}|${i.daysLeft}`)
-    .join(";");
+  onMealsCookedChange?: (delta: number) => void;
+  onRecipeCookToggle?: (recipe: Recipe, nowCooked: boolean) => void;
+  onRequestIngredient?: (friendName: string, ingredientLabel: string) => void;
 }
 
 const cardTints = [
@@ -61,16 +58,19 @@ const MATCH_OPTIONS: {
   { id: "pantry_only", label: "Uses only pantry items" },
   { id: "missing_1", label: "Missing 1 ingredient" },
   { id: "missing_2", label: "Missing 2 ingredients" },
-  { id: "friends_expiring", label: "Uses friends expiring items" },
+  { id: "missing_3", label: "Missing 3 ingredients" },
+  { id: "missing_4_plus", label: "Missing 4+ ingredients" },
 ];
 
 
 function RecipeDetailSheet({
   recipe,
   onClose,
+  onRequestIngredient,
 }: {
   recipe: Recipe;
   onClose: () => void;
+  onRequestIngredient?: (friendName: string, ingredientLabel: string) => void;
 }) {
   const [requested, setRequested] = useState<Set<string>>(new Set());
 
@@ -78,12 +78,19 @@ function RecipeDetailSheet({
 
   const toggleRequest = (friendName: string, ingredientLabel: string) => {
     const key = `${recipe.id}-${friendName}-${ingredientLabel}`;
+    let becameRequested = false;
     setRequested((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
-      else next.add(key);
+      else {
+        next.add(key);
+        becameRequested = true;
+      }
       return next;
     });
+    if (becameRequested) {
+      onRequestIngredient?.(friendName, ingredientLabel);
+    }
   };
 
   return (
@@ -177,7 +184,7 @@ function RecipeDetailSheet({
                         {src?.source === "friend" && src.friendName && (
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <p className="text-[11px] text-stone-600">
-                              {src.friendName} may have this — coordinate on
+                              {src.friendName} may have this, coordinate on
                               Friends.
                             </p>
                             <button
@@ -197,7 +204,7 @@ function RecipeDetailSheet({
                         )}
                         {!src && exp && (
                           <p className="text-[11px] text-red-600 mt-0.5">
-                            Expiring soon — using this saves waste.
+                            Expiring soon, using this saves waste.
                           </p>
                         )}
                       </div>
@@ -208,7 +215,7 @@ function RecipeDetailSheet({
             </ul>
             {(recipe.usesSources?.length ?? 0) > 0 && (
               <p className="text-[12px] text-stone-600 mt-4 leading-relaxed">
-                This recipe pulls from your pantry and friends’ surplus — about{" "}
+                This recipe pulls from your pantry and friends’ surplus, about{" "}
                 <span className="font-semibold text-stone-900 tabular-nums">
                   ${wasteAmt}
                 </span>{" "}
@@ -263,7 +270,59 @@ function recipePassesFilters(
   return true;
 }
 
-export default function Recipes({ pantryIngredients = []}: RecipesProps) {
+function pantryCoverageScore(r: Recipe): number {
+  return r.usesSources?.filter((u) => u.source === "yours").length ?? 0;
+}
+
+function missingItemsCount(match: IngredientMatchKind): number {
+  if (match === "pantry_only") return 0;
+  if (match === "missing_1") return 1;
+  if (match === "missing_2") return 2;
+  if (match === "missing_3") return 3;
+  return 4;
+}
+
+function matchesIngredientLabel(a: string, b: string): boolean {
+  const left = a.toLowerCase().trim();
+  const right = b.toLowerCase().trim();
+  if (!left || !right) return false;
+  return (
+    left.includes(right) ||
+    right.includes(left) ||
+    left.split(/\s+/).some((w) => w.length > 2 && right.includes(w))
+  );
+}
+
+function attachFriendSources(recipes: Recipe[], posts: FriendPost[]): Recipe[] {
+  return recipes.map((recipe) => {
+    const uses = [...(recipe.usesSources ?? [])];
+    for (const post of posts) {
+      if (post.daysLeft > 2) continue;
+      const hit = recipe.allIngredients.find((line) =>
+        matchesIngredientLabel(line, post.ingredientName)
+      );
+      if (!hit) continue;
+      const alreadyHas = uses.some(
+        (u) => u.source === "friend" && matchesIngredientLabel(u.ingredientLabel, hit)
+      );
+      if (!alreadyHas) {
+        uses.push({
+          ingredientLabel: hit,
+          source: "friend",
+          friendName: post.friendName.split(" ")[0],
+        });
+      }
+    }
+    return uses.length > 0 ? { ...recipe, usesSources: uses } : recipe;
+  });
+}
+
+export default function Recipes({
+  pantryIngredients = [],
+  onMealsCookedChange,
+  onRecipeCookToggle,
+  onRequestIngredient,
+}: RecipesProps) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -286,13 +345,7 @@ export default function Recipes({ pantryIngredients = []}: RecipesProps) {
 
   const [visibleCount, setVisibleCount] = useState(6);
 
-  const fetchKey = useMemo(
-    () => pantryFetchKey(pantryIngredients),
-    [pantryIngredients]
-  );
-
   useEffect(() => {
-    
     const ac = new AbortController();
     setLoading(true);
     setFetchError(null);
@@ -307,7 +360,7 @@ export default function Recipes({ pantryIngredients = []}: RecipesProps) {
         if (!res.ok) {
           throw new Error(data.error ?? "Could not load recipes");
         }
-        setRecipes(data.recipes ?? []);
+        setRecipes(attachFriendSources(data.recipes ?? [], mockFriendPosts));
       })
       .catch((e: Error) => {
         if (e.name === "AbortError") return;
@@ -318,7 +371,9 @@ export default function Recipes({ pantryIngredients = []}: RecipesProps) {
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [fetchKey]);
+    // Intentionally load once per page session; tab switches should not re-fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const activeFilterCount = useMemo(() => {
     let n = dietary.size;
@@ -353,7 +408,14 @@ export default function Recipes({ pantryIngredients = []}: RecipesProps) {
           r.allIngredients.some((ing) =>
             ing.toLowerCase().includes(q)
           )
-      );
+      )
+      .sort((a, b) => {
+        const coverage = pantryCoverageScore(b) - pantryCoverageScore(a);
+        if (coverage !== 0) return coverage;
+        const missing = a.allIngredients.length - b.allIngredients.length;
+        if (missing !== 0) return missing;
+        return a.name.localeCompare(b.name);
+      });
   }, [
     recipes,
     dietary,
@@ -634,11 +696,7 @@ export default function Recipes({ pantryIngredients = []}: RecipesProps) {
                       <button
                         key={opt.id}
                         type="button"
-                        onClick={() =>
-                          setMatch((prev) =>
-                            prev === opt.id ? null : opt.id
-                          )
-                        }
+                        onClick={() => setMatch((prev) => (prev === opt.id ? null : opt.id))}
                         className={`text-left px-4 py-3 rounded-2xl text-[13px] font-medium border ${
                           on
                             ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
@@ -681,9 +739,10 @@ export default function Recipes({ pantryIngredients = []}: RecipesProps) {
 
       <div className="flex flex-col gap-5">
         {loading && (
-          <p className="text-[13px] text-stone-500 text-center py-10">
-            Loading recipes from TheMealDB…
-          </p>
+          <div className="flex flex-col items-center justify-center gap-3 py-10">
+            <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-900 rounded-full animate-spin" />
+            <p className="text-[13px] text-stone-500">Loading recipes…</p>
+          </div>
         )}
         {!loading && 
           visibleRecipes.map((recipe, idx) => {
@@ -752,20 +811,13 @@ export default function Recipes({ pantryIngredients = []}: RecipesProps) {
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 pointer-events-none">
-                    {recipe.allIngredients.map((ing, ingIdx) => {
-                      const isExpiring = isExpiringIngredient(recipe, ing);
-                      return (
-                        <span
-                          key={`${recipe.id}-chip-ing-${ingIdx}-${ing}`}
-                          className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-stone-200 text-stone-700 inline-flex items-center gap-1.5"
-                        >
-                          {isExpiring && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                          )}
-                          {ing}
-                        </span>
-                      );
-                    })}
+                    <span className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-red-200 bg-red-50 text-red-700 inline-flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                      {recipe.expiringIngredients.length} urgent items
+                    </span>
+                    <span className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-stone-200 text-stone-700 inline-flex items-center gap-1.5">
+                      Missing {missingItemsCount(recipe.ingredientMatch)}
+                    </span>
                   </div>
                 </button>
                 <button
@@ -795,8 +847,15 @@ export default function Recipes({ pantryIngredients = []}: RecipesProps) {
                 type="button"
                 onClick={() => {
                   const next = new Set(cooked);
-                  if (isCookedNow) next.delete(recipe.id);
-                  else next.add(recipe.id);
+                  if (isCookedNow) {
+                    next.delete(recipe.id);
+                    onMealsCookedChange?.(-1);
+                    onRecipeCookToggle?.(recipe, false);
+                  } else {
+                    next.add(recipe.id);
+                    onMealsCookedChange?.(1);
+                    onRecipeCookToggle?.(recipe, true);
+                  }
                   setCooked(next);
                 }}
                 className={`w-full py-3.5 rounded-full text-[13px] font-medium tracking-wide mt-1 ${
@@ -805,7 +864,7 @@ export default function Recipes({ pantryIngredients = []}: RecipesProps) {
                     : `bg-stone-900 text-white ${pressDark}`
                 }`}
               >
-                {isCookedNow ? "Marked as cooked ✓" : "Cook this tonight"}
+                {isCookedNow ? "Marked as cooked ✓" : "Mark as cooked"}
               </button>
             </div>
           );
@@ -816,6 +875,7 @@ export default function Recipes({ pantryIngredients = []}: RecipesProps) {
         <RecipeDetailSheet
           recipe={detailRecipe}
           onClose={() => setDetailRecipe(null)}
+          onRequestIngredient={onRequestIngredient}
         />
       )}
       {!loading && visibleCount < filtered.length && (

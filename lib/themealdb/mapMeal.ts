@@ -21,9 +21,13 @@ export async function fetchJson<T>(url: string): Promise<T> {
 export function extractIngredients(meal: MealDbRaw): string[] {
   const out: string[] = [];
   for (let i = 1; i <= 20; i++) {
-    const v = meal[`strIngredient${i}`];
-    const s = typeof v === "string" ? v.trim() : "";
-    if (s) out.push(s);
+    const ingredientRaw = meal[`strIngredient${i}`];
+    const measureRaw = meal[`strMeasure${i}`];
+    const ingredient =
+      typeof ingredientRaw === "string" ? ingredientRaw.trim() : "";
+    const measure = typeof measureRaw === "string" ? measureRaw.trim() : "";
+    if (!ingredient) continue;
+    out.push([measure, ingredient].filter(Boolean).join(" ").trim());
   }
   return out;
 }
@@ -64,13 +68,24 @@ function mapAreaToCuisine(area: string | undefined): CuisineTag {
 
 function stepsFromInstructions(text: string | undefined): string[] {
   if (!text?.trim()) return ["Open the recipe source for full steps."];
+  const sanitizeStep = (raw: string): string => {
+    return raw
+      .replace(/^\s*(?:step\s*)?\d+\s*[:.)-]?\s*/i, "")
+      .trim();
+  };
+
   const lines = text
-    .split(/\r?\n/)
-    .map((s) => s.replace(/^\d+[.)]\s*/, "").trim())
-    .filter(Boolean);
+    .split(/\r?\n+/)
+    .map((s) => sanitizeStep(s))
+    .filter((s) => s.length > 0 && !/^step\s*\d*$/i.test(s));
   if (lines.length > 1) return lines;
-  const byPeriod = text.split(/\.\s+/).map((s) => s.trim()).filter(Boolean);
-  return byPeriod.length > 1 ? byPeriod.map((s) => (s.endsWith(".") ? s : `${s}.`)) : [text.trim()];
+  const byPeriod = text
+    .split(/\.\s+/)
+    .map((s) => sanitizeStep(s))
+    .filter((s) => s.length > 0 && !/^step\s*\d*$/i.test(s));
+  return byPeriod.length > 1
+    ? byPeriod.map((s) => (s.endsWith(".") ? s : `${s}.`))
+    : [sanitizeStep(text)];
 }
 
 function computeMatch(
@@ -104,10 +119,12 @@ function computeMatch(
   const matchedCount = matchedRecipeLines.size;
   const missingApprox = Math.max(0, allIngs.length - matchedCount);
 
-  let ingredientMatch: IngredientMatchKind = "missing_2";
+  let ingredientMatch: IngredientMatchKind = "missing_4_plus";
   if (missingApprox <= 0 && allIngs.length > 0) ingredientMatch = "pantry_only";
   else if (missingApprox === 1) ingredientMatch = "missing_1";
-  else if (missingApprox >= 2) ingredientMatch = "missing_2";
+  else if (missingApprox === 2) ingredientMatch = "missing_2";
+  else if (missingApprox === 3) ingredientMatch = "missing_3";
+  else if (missingApprox >= 4) ingredientMatch = "missing_4_plus";
 
   return {
     matchedCount,

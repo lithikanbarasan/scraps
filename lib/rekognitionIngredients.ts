@@ -33,6 +33,10 @@ const EXCLUDED_LABELS = new Set([
   "vehicle",
   "wheel",
   "transportation",
+  "breakfast",
+  "citrus fruit",
+  "natural foods",
+  "whole foods",
 ]);
 
 const NAME_ALIASES: Record<string, string> = {
@@ -81,14 +85,6 @@ const NAME_ALIASES: Record<string, string> = {
 
 const GROCERY_KEYWORDS = new Set([
   ...Object.keys(NAME_ALIASES),
-  "produce",
-  "vegetable",
-  "fruit",
-  "meat",
-  "dairy",
-  "bread",
-  "pepper",
-  "potato",
 ]);
 
 function toTitleCase(value: string): string {

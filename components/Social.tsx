@@ -62,6 +62,40 @@ export default function Social({
   );
   const [posts, setPosts] = useState(friendPosts);
 
+  const norm = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const namesMatch = (a: string, b: string) => {
+    const na = norm(a);
+    const nb = norm(b);
+    return na === nb || na.startsWith(nb) || nb.startsWith(na);
+  };
+
+  const ingredientMatch = (a: string, b: string) => {
+    const na = norm(a);
+    const nb = norm(b);
+    return (
+      na === nb ||
+      na.includes(nb) ||
+      nb.includes(na) ||
+      na.split(" ").some((part) => part.length > 2 && nb.includes(part))
+    );
+  };
+
+  const hasOutgoingRequestForPost = (post: FriendPost) => {
+    return exchangeRequests.some(
+      (r) =>
+        r.direction === "outgoing" &&
+        r.status !== "declined" &&
+        namesMatch(r.counterpartyName, post.friendName) &&
+        ingredientMatch(r.ingredientName, post.ingredientName)
+    );
+  };
+
   const toggleRequest = (id: string) => {
     const post = posts.find((p) => p.id === id);
     if (!post) return;
@@ -94,8 +128,15 @@ export default function Social({
     });
   };
 
-  const urgentPosts = posts.filter((p) => p.urgency === "red");
-  const otherPosts = posts.filter((p) => p.urgency !== "red");
+  const availablePosts = posts
+    .map((p) => ({
+      ...p,
+      requested: p.requested || hasOutgoingRequestForPost(p),
+    }))
+    .filter((p) => !p.requested);
+
+  const urgentPosts = availablePosts.filter((p) => p.urgency === "red");
+  const otherPosts = availablePosts.filter((p) => p.urgency !== "red");
 
   const outgoing = exchangeRequests.filter((r) => r.direction === "outgoing");
   const incoming = exchangeRequests.filter((r) => r.direction === "incoming");

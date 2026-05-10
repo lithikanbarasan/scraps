@@ -169,7 +169,9 @@ function computeIngredientMatch(
   const missing = recipeCount - matchedCount;
   if (missing <= 0) return "pantry_only";
   if (missing === 1) return "missing_1";
-  return "missing_2";
+  if (missing === 2) return "missing_2";
+  if (missing === 3) return "missing_3";
+  return "missing_4_plus";
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -376,14 +378,22 @@ export async function fetchRecipesForPantry(
         ? 0
         : a.ingredientMatch === "missing_1"
           ? 1
-          : 2);
+          : a.ingredientMatch === "missing_2"
+            ? 2
+            : a.ingredientMatch === "missing_3"
+              ? 3
+              : 4);
     const mb =
       b.allIngredients.length -
       (b.ingredientMatch === "pantry_only"
         ? 0
         : b.ingredientMatch === "missing_1"
           ? 1
-          : 2);
+          : b.ingredientMatch === "missing_2"
+            ? 2
+            : b.ingredientMatch === "missing_3"
+              ? 3
+              : 4);
     return mb - ma;
   });
 
