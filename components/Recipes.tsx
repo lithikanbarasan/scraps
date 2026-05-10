@@ -154,7 +154,6 @@ function RecipeDetailSheet({
                 return (
                   <li
                     key={`${recipe.id}-detail-ing-${ingIdx}-${ing}`}
-                  key={`${ing}-${i}`}
                     className="border border-stone-100 rounded-xl px-3 py-2.5 bg-stone-50/50"
                   >
                     <div className="flex items-start gap-2">
@@ -282,7 +281,6 @@ export default function Recipes({ pantryIngredients }: RecipesProps) {
 
   const [cooked, setCooked] = useState<Set<string>>(new Set());
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState("");
 
   const [visibleCount, setVisibleCount] = useState(6);
 
