@@ -99,30 +99,6 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
         <h1 className="font-display text-[34px] leading-[1.1] tracking-[-0.01em] text-stone-900">
           Add to pantry.
         </h1>
-        <p className="text-[13px] text-stone-500 mt-3">
-          Scan your fridge or enter manually.
-        </p>
-      </div>
-
-      {/* Tab switcher — pill style */}
-      <div className="flex gap-2">
-        {(["manual", "scan"] as const).map((t) => {
-          const active = tab === t;
-          return (
-            <button
-              type="button"
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 py-2.5 rounded-full text-[13px] font-medium border ${
-                active
-                  ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
-                  : `bg-white text-stone-700 border-stone-300 ${pressOutline}`
-              }`}
-            >
-              {t === "manual" ? "Manual entry" : "Scan receipt"}
-            </button>
-          );
-        })}
       </div>
 
       {tab === "scan" ? (
