@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import { Ingredient, UrgencyLevel } from "./types";
-import { getDaysLeft, getUrgency } from "./ingredientUtils";
+import { getDaysLeft, getUrgency, parseAddBatchCount } from "./ingredientUtils";
 import { pressDark, pressOutline } from "./pressableStyles";
 
 interface AddIngredientProps {
@@ -15,6 +15,7 @@ const EMOJI_MAP: Record<string, string> = {
   apple: "🍎", banana: "🍌", lemon: "🍋", onion: "🧅", garlic: "🧄",
   pepper: "🫑", broccoli: "🥦", potato: "🥔", mushroom: "🍄", butter: "🧈",
   yogurt: "🫙", orange: "🍊", blueberr: "🫐", avocado: "🥑",
+  soup: "🥫",
 };
 
 function getEmoji(name: string): string {
@@ -22,7 +23,7 @@ function getEmoji(name: string): string {
   for (const [key, emoji] of Object.entries(EMOJI_MAP)) {
     if (lower.includes(key)) return emoji;
   }
-  return "🥫";
+  return "🛒";
 }
 
 const urgencyDot: Record<UrgencyLevel, string> = {
@@ -51,11 +52,14 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
     if (!name || !expiryDate) return;
     const days = getDaysLeft(expiryDate);
     const urgency = getUrgency(days);
+    const isCountableUnit = unit === "count" || unit === "bag";
+    const lineCount = isCountableUnit ? parseAddBatchCount(quantity || "1") : 1;
     const newIngredient: Ingredient = {
       id: Date.now().toString(),
       name,
       quantity: quantity || "1",
       unit,
+      count: lineCount,
       expiryDate,
       daysLeft: days,
       urgency,

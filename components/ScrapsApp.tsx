@@ -7,8 +7,8 @@ import Social from "./Social";
 import Profile from "./Profile";
 import NotificationsSheet from "./NotificationsSheet";
 import { pressFlat } from "./pressableStyles";
-import { Ingredient } from "./types";
-import { getDaysLeft, getUrgency } from "./ingredientUtils";
+import { Ingredient, IngredientExchangeRequest } from "./types";
+import { getDaysLeft, getUrgency, ingredientMatchKey } from "./ingredientUtils";
 import {
   mockIngredients,
   mockRecipes,
@@ -97,13 +97,37 @@ export default function ScrapsApp() {
   const [ingredients, setIngredients] = useState<Ingredient[]>(mockIngredients);
   const [notifications, setNotifications] = useState(mockProfile.notifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [exchangeRequests, setExchangeRequests] = useState<
+    IngredientExchangeRequest[]
+  >(mockExchangeRequests);
 
   const handleAddIngredient = (newIng: Ingredient) => {
     setIngredients((prev) => {
+      const key = ingredientMatchKey(newIng.name, newIng.expiryDate);
+      const i = prev.findIndex(
+        (x) => ingredientMatchKey(x.name, x.expiryDate) === key
+      );
+      if (i >= 0) {
+        const existing = prev[i];
+        const merged: Ingredient = {
+          ...existing,
+          count: existing.count + newIng.count,
+          estimatedValue: existing.estimatedValue + newIng.estimatedValue,
+          isShared: existing.isShared || newIng.isShared,
+          autoShared: existing.autoShared || newIng.autoShared,
+        };
+        const next = [...prev];
+        next[i] = merged;
+        return next.sort((a, b) => a.daysLeft - b.daysLeft);
+      }
       const updated = [newIng, ...prev];
       return updated.sort((a, b) => a.daysLeft - b.daysLeft);
     });
     setTimeout(() => setActiveTab("pantry"), 1200);
+  };
+
+  const handleRemoveIngredient = (id: string) => {
+    setIngredients((prev) => prev.filter((ing) => ing.id !== id));
   };
 
   const handleToggleShare = (id: string) => {
@@ -119,15 +143,26 @@ export default function ScrapsApp() {
     updates: Partial<Ingredient>
   ) => {
     setIngredients((prev) => {
+      if (updates.count !== undefined && updates.count <= 0) {
+        return prev.filter((ing) => ing.id !== id);
+      }
       const next = prev.map((ing) => {
         if (ing.id !== id) return ing;
         const merged = { ...ing, ...updates };
+        if (updates.count !== undefined) {
+          const oldC = ing.count;
+          const newC = updates.count;
+          if (oldC > 0 && newC > 0 && oldC !== newC) {
+            merged.estimatedValue = ing.estimatedValue * (newC / oldC);
+          }
+          merged.count = newC;
+        }
         if (updates.expiryDate !== undefined) {
           const days = getDaysLeft(updates.expiryDate);
           merged.daysLeft = days;
           merged.urgency = getUrgency(days);
         }
-        if (updates.estimatedValue !== undefined) {
+        if (updates.estimatedValue !== undefined && updates.count === undefined) {
           merged.estimatedValue = updates.estimatedValue;
         }
         return merged;
@@ -235,6 +270,7 @@ export default function ScrapsApp() {
                 ingredients={ingredients}
                 onToggleShare={handleToggleShare}
                 onUpdateIngredient={handleUpdateIngredient}
+                onRemoveIngredient={handleRemoveIngredient}
               />
             )}
             {activeTab === "add" && (
@@ -247,7 +283,8 @@ export default function ScrapsApp() {
               <Social
                 friendPosts={mockFriendPosts}
                 mySharedIngredients={sharedIngredients}
-                exchangeRequests={mockExchangeRequests}
+                exchangeRequests={exchangeRequests}
+                setExchangeRequests={setExchangeRequests}
               />
             )}
             {activeTab === "profile" && <Profile profile={mockProfile} />}

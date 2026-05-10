@@ -5,6 +5,8 @@ export interface Ingredient {
   name: string;
   quantity: string;
   unit: string;
+  /** Same name + expiry rows are merged; each add bumps this (e.g. soup boxes). */
+  count: number;
   expiryDate: string; // ISO string
   daysLeft: number;
   urgency: UrgencyLevel;

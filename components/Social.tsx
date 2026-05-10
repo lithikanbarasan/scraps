@@ -4,14 +4,23 @@ import type {
   FriendPost,
   Ingredient,
   IngredientExchangeRequest,
+  ExchangeRequestStatus,
   UrgencyLevel,
 } from "./types";
 import { pressDark, pressOutline } from "./pressableStyles";
+
+/** Stable id for outgoing rows created from the Friends feed (Request button). */
+function outgoingRequestIdForFriendPost(postId: string): string {
+  return `outgoing-post-${postId}`;
+}
 
 interface SocialProps {
   friendPosts: FriendPost[];
   mySharedIngredients: Ingredient[];
   exchangeRequests: IngredientExchangeRequest[];
+  setExchangeRequests: React.Dispatch<
+    React.SetStateAction<IngredientExchangeRequest[]>
+  >;
 }
 
 const urgencyDot: Record<UrgencyLevel, string> = {
@@ -46,6 +55,7 @@ export default function Social({
   friendPosts,
   mySharedIngredients,
   exchangeRequests,
+  setExchangeRequests,
 }: SocialProps) {
   const [tab, setTab] = useState<"available" | "mine" | "requests">(
     "available"
@@ -53,11 +63,35 @@ export default function Social({
   const [posts, setPosts] = useState(friendPosts);
 
   const toggleRequest = (id: string) => {
+    const post = posts.find((p) => p.id === id);
+    if (!post) return;
+
+    const nextRequested = !post.requested;
+    const reqId = outgoingRequestIdForFriendPost(id);
+
     setPosts((prev) =>
       prev.map((p) =>
-        p.id === id ? { ...p, requested: !p.requested } : p
+        p.id === id ? { ...p, requested: nextRequested } : p
       )
     );
+
+    setExchangeRequests((prev) => {
+      if (nextRequested) {
+        if (prev.some((r) => r.id === reqId)) return prev;
+        const row: IngredientExchangeRequest = {
+          id: reqId,
+          direction: "outgoing",
+          counterpartyName: post.friendName,
+          counterpartyInitials: post.friendInitials,
+          ingredientName: post.ingredientName,
+          ingredientEmoji: post.ingredientEmoji,
+          quantity: post.quantity,
+          status: "pending",
+        };
+        return [...prev, row];
+      }
+      return prev.filter((r) => r.id !== reqId);
+    });
   };
 
   const urgentPosts = posts.filter((p) => p.urgency === "red");
@@ -65,6 +99,12 @@ export default function Social({
 
   const outgoing = exchangeRequests.filter((r) => r.direction === "outgoing");
   const incoming = exchangeRequests.filter((r) => r.direction === "incoming");
+
+  const resolveIncoming = (id: string, status: Exclude<ExchangeRequestStatus, "pending">) => {
+    setExchangeRequests((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status } : r))
+    );
+  };
 
   return (
     <div className="flex flex-col gap-7 px-6 pt-5 pb-2">
@@ -192,6 +232,7 @@ export default function Social({
                     </p>
                   </div>
                   <p className="text-[12px] text-stone-400 mt-0.5 ml-3.5">
+                    {ing.count > 1 ? `${ing.count} × ` : ""}
                     {ing.quantity} {ing.unit}
                   </p>
                 </div>
@@ -238,7 +279,15 @@ export default function Social({
               </h2>
               <div className="flex flex-col gap-3">
                 {incoming.map((r) => (
-                  <ExchangeRequestRow key={r.id} request={r} />
+                  <ExchangeRequestRow
+                    key={r.id}
+                    request={r}
+                    onResolveIncoming={
+                      r.status === "pending"
+                        ? (resolution) => resolveIncoming(r.id, resolution)
+                        : undefined
+                    }
+                  />
                 ))}
               </div>
             </section>
@@ -257,13 +306,23 @@ export default function Social({
 
 function ExchangeRequestRow({
   request,
+  onResolveIncoming,
 }: {
   request: IngredientExchangeRequest;
+  /** When set (incoming + pending), row shows Accept / Decline instead of a static Pending pill. */
+  onResolveIncoming?: (
+    resolution: Exclude<ExchangeRequestStatus, "pending">
+  ) => void;
 }) {
   const label =
     request.direction === "outgoing"
       ? `From ${request.counterpartyName}`
       : `${request.counterpartyName} asked you`;
+
+  const showIncomingActions =
+    request.direction === "incoming" &&
+    request.status === "pending" &&
+    onResolveIncoming;
 
   return (
     <div className="bg-white border border-stone-200 rounded-2xl p-4">
@@ -285,16 +344,37 @@ function ExchangeRequestRow({
             <p className="text-[11px] text-stone-400 mt-0.5">{request.quantity}</p>
           </div>
         </div>
-        <span
-          className={`text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border flex-shrink-0 ${statusStyle[request.status]}`}
-        >
-          {request.status === "pending"
-            ? "Pending"
-            : request.status === "approved"
-            ? "Approved"
-            : "Declined"}
-        </span>
+        {!showIncomingActions && (
+          <span
+            className={`text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border flex-shrink-0 ${statusStyle[request.status]}`}
+          >
+            {request.status === "pending"
+              ? "Pending"
+              : request.status === "approved"
+              ? "Approved"
+              : "Declined"}
+          </span>
+        )}
       </div>
+
+      {showIncomingActions && (
+        <div className="flex gap-2 mt-4 pt-3 border-t border-stone-100">
+          <button
+            type="button"
+            onClick={() => onResolveIncoming("declined")}
+            className={`flex-1 py-2.5 rounded-full text-[12px] font-medium border border-stone-300 bg-white text-stone-800 ${pressOutline}`}
+          >
+            Decline
+          </button>
+          <button
+            type="button"
+            onClick={() => onResolveIncoming("approved")}
+            className={`flex-1 py-2.5 rounded-full text-[12px] font-medium bg-stone-900 text-white ${pressDark}`}
+          >
+            Accept
+          </button>
+        </div>
+      )}
     </div>
   );
 }
