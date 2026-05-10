@@ -110,3 +110,18 @@ export interface Notification {
   type: "warning" | "info" | "success";
   read: boolean;
 }
+
+/** Controls which notification categories appear in the inbox and count toward the badge. */
+export interface NotificationPreferences {
+  expiryAlerts: boolean;
+  friendActivity: boolean;
+  weeklyDigest: boolean;
+}
+
+export type DistanceUnit = "mi" | "km";
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  expiryAlerts: true,
+  friendActivity: true,
+  weeklyDigest: true,
+};
