@@ -1,6 +1,8 @@
 "use client";
 import React, { useState } from "react";
 import { Ingredient, UrgencyLevel } from "./types";
+import { getDaysLeft, getUrgency } from "./ingredientUtils";
+import { pressDark, pressOutline } from "./pressableStyles";
 
 interface AddIngredientProps {
   onAdd: (ingredient: Ingredient) => void;
@@ -21,20 +23,6 @@ function getEmoji(name: string): string {
     if (lower.includes(key)) return emoji;
   }
   return "🥫";
-}
-
-function getDaysLeft(dateStr: string): number {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiry = new Date(dateStr);
-  expiry.setHours(0, 0, 0, 0);
-  return Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function getUrgency(days: number): UrgencyLevel {
-  if (days <= 2) return "red";
-  if (days <= 5) return "yellow";
-  return "green";
 }
 
 const urgencyDot: Record<UrgencyLevel, string> = {
@@ -102,20 +90,6 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
 
   return (
     <div className="flex flex-col gap-7 px-6 pt-5 pb-2">
-      {/* Header avatars */}
-      <div className="flex items-center justify-between">
-        <div className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-sm font-medium text-stone-600 border border-stone-200">
-          SC
-        </div>
-        <button className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <circle cx="6" cy="12" r="1.5" fill="#0c0a09" />
-            <circle cx="12" cy="12" r="1.5" fill="#0c0a09" />
-            <circle cx="18" cy="12" r="1.5" fill="#0c0a09" />
-          </svg>
-        </button>
-      </div>
-
       {/* Title */}
       <div>
         <h1 className="font-display text-[34px] leading-[1.1] tracking-[-0.01em] text-stone-900">
@@ -132,15 +106,16 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
           const active = tab === t;
           return (
             <button
+              type="button"
               key={t}
               onClick={() => setTab(t)}
-              className={`flex-1 py-2.5 rounded-full text-[13px] font-medium transition-all border ${
+              className={`flex-1 py-2.5 rounded-full text-[13px] font-medium border ${
                 active
-                  ? "bg-stone-900 text-white border-stone-900"
-                  : "bg-white text-stone-700 border-stone-300"
+                  ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
+                  : `bg-white text-stone-700 border-stone-300 ${pressOutline}`
               }`}
             >
-              {t === "manual" ? "Manual entry" : "Scan photo"}
+              {t === "manual" ? "Manual entry" : "Scan receipt"}
             </button>
           );
         })}
@@ -169,8 +144,9 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
                   pantry, or receipt.
                 </p>
                 <button
+                  type="button"
                   onClick={handleSimulateScan}
-                  className="bg-stone-900 text-white px-6 py-2.5 rounded-full text-[13px] font-medium"
+                  className={`bg-stone-900 text-white px-6 py-2.5 rounded-full text-[13px] font-medium ${pressDark}`}
                 >
                   Simulate scan
                 </button>
@@ -285,9 +261,10 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
 
           {/* Submit */}
           <button
+            type="button"
             onClick={handleAdd}
             disabled={!name || !expiryDate}
-            className="w-full bg-stone-900 disabled:bg-stone-200 disabled:text-stone-400 text-white font-medium py-3.5 rounded-full text-[13px] tracking-wide transition-all active:scale-[0.99] mt-2"
+            className={`w-full bg-stone-900 disabled:bg-stone-200 disabled:text-stone-400 disabled:active:scale-100 text-white font-medium py-3.5 rounded-full text-[13px] tracking-wide mt-2 ${pressDark}`}
           >
             {success ? "Added ✓" : "Add to pantry"}
           </button>

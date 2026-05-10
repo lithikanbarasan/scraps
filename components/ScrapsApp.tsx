@@ -5,20 +5,25 @@ import AddIngredient from "./AddIngredient";
 import Recipes from "./Recipes";
 import Social from "./Social";
 import Profile from "./Profile";
+import NotificationsSheet from "./NotificationsSheet";
+import { pressFlat } from "./pressableStyles";
 import { Ingredient } from "./types";
+import { getDaysLeft, getUrgency } from "./ingredientUtils";
 import {
   mockIngredients,
   mockRecipes,
   mockFriendPosts,
+  mockExchangeRequests,
   mockProfile,
 } from "./mockData";
 
 type Tab = "pantry" | "add" | "recipes" | "social" | "profile";
 
+/* Cook (chef hat) and Add (+) are swapped vs. the original order */
 const tabs: { id: Tab; label: string }[] = [
   { id: "pantry", label: "Pantry" },
-  { id: "add", label: "Add" },
   { id: "recipes", label: "Cook" },
+  { id: "add", label: "Add" },
   { id: "social", label: "Friends" },
   { id: "profile", label: "You" },
 ];
@@ -26,7 +31,6 @@ const tabs: { id: Tab; label: string }[] = [
 // Monoline icons — 1.5 stroke, neutral, consistent geometry
 function TabIcon({ id, active }: { id: Tab; active: boolean }) {
   const stroke = active ? "#0c0a09" : "#a8a29e";
-  const fill = active ? "#0c0a09" : "none";
   const common = {
     width: 22,
     height: 22,
@@ -39,12 +43,11 @@ function TabIcon({ id, active }: { id: Tab; active: boolean }) {
   };
   switch (id) {
     case "pantry":
-      // Jar / pantry container
+      // Grocery basket + handle — pantry ingredients (no jar, no tab badge)
       return (
         <svg {...common}>
-          <path d="M7 4h10l-1 3H8L7 4z" fill={active ? "#0c0a09" : "none"} />
-          <rect x="6" y="7" width="12" height="13" rx="2" />
-          <line x1="9" y1="12" x2="15" y2="12" />
+          <path d="M8 9V7.5a4 4 0 018 0V9" />
+          <path d="M5 10h14l-1.5 10a2 2 0 01-2 1.5H8.5a2 2 0 01-2-1.5L5 10z" />
         </svg>
       );
     case "add":
@@ -55,13 +58,13 @@ function TabIcon({ id, active }: { id: Tab; active: boolean }) {
         </svg>
       );
     case "recipes":
-      // Heart (favorite recipes — matches image 1 aesthetic)
+      // Fork & knife — “meals” / dining (readable at 22px)
       return (
-        <svg {...common} fill={fill}>
-          <path
-            d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"
-            stroke={stroke}
-          />
+        <svg {...common}>
+          <path d="M8 4v15" />
+          <path d="M6 4v4M8 4v4M10 4v4" />
+          <path d="M17 4l5 15" />
+          <path d="M17 4l3 4v7l-3 4" />
         </svg>
       );
     case "social":
@@ -92,6 +95,8 @@ function TabIcon({ id, active }: { id: Tab; active: boolean }) {
 export default function ScrapsApp() {
   const [activeTab, setActiveTab] = useState<Tab>("pantry");
   const [ingredients, setIngredients] = useState<Ingredient[]>(mockIngredients);
+  const [notifications, setNotifications] = useState(mockProfile.notifications);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const handleAddIngredient = (newIng: Ingredient) => {
     setIngredients((prev) => {
@@ -109,9 +114,44 @@ export default function ScrapsApp() {
     );
   };
 
+  const handleUpdateIngredient = (
+    id: string,
+    updates: Partial<Ingredient>
+  ) => {
+    setIngredients((prev) => {
+      const next = prev.map((ing) => {
+        if (ing.id !== id) return ing;
+        const merged = { ...ing, ...updates };
+        if (updates.expiryDate !== undefined) {
+          const days = getDaysLeft(updates.expiryDate);
+          merged.daysLeft = days;
+          merged.urgency = getUrgency(days);
+        }
+        if (updates.estimatedValue !== undefined) {
+          merged.estimatedValue = updates.estimatedValue;
+        }
+        return merged;
+      });
+      return next.sort((a, b) => a.daysLeft - b.daysLeft);
+    });
+  };
+
   const sharedIngredients = ingredients.filter((i) => i.isShared);
-  const unreadNotifs = mockProfile.notifications.filter((n) => !n.read).length;
-  const urgentCount = ingredients.filter((i) => i.urgency === "red").length;
+  const unreadNotifs = notifications.filter((n) => !n.read).length;
+  const markAllNotificationsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
+  const markNotificationRead = (id: string) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+  };
+
+  const openNotifications = () => setNotificationsOpen(true);
+
+  const notifBadge =
+    unreadNotifs > 9 ? "9+" : unreadNotifs > 0 ? String(unreadNotifs) : null;
 
   return (
     <>
@@ -128,44 +168,86 @@ export default function ScrapsApp() {
       `}</style>
 
       <div className="min-h-screen bg-stone-200 flex items-start justify-center py-6 px-4 font-sans-i">
-        {/* Phone frame — pure white interior */}
-        <div
-          className="relative w-full max-w-sm bg-white rounded-[44px] border border-stone-300 overflow-hidden shadow-2xl flex flex-col"
-          style={{ minHeight: 800 }}
-        >
-          {/* Status bar */}
-          <div className="flex items-center justify-between px-7 pt-3 pb-1">
-            <span className="text-[12px] font-semibold text-stone-900 tabular-nums">
-              9:41
-            </span>
-            <div className="flex items-center gap-[3px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-stone-900" />
-              <span className="text-[12px] font-semibold tracking-tight text-stone-900 lowercase">
-                scraps
-              </span>
+        {/* Phone frame — fixed height so the tab bar stays at the bottom of the screen */}
+        <div className="relative w-full max-w-sm bg-white rounded-[44px] border border-stone-300 overflow-hidden shadow-2xl flex flex-col h-[812px] max-h-[calc(100vh-48px)]">
+          <NotificationsSheet
+            open={notificationsOpen}
+            onClose={() => setNotificationsOpen(false)}
+            notifications={notifications}
+            onMarkAllRead={markAllNotificationsRead}
+            onMarkRead={markNotificationRead}
+          />
+          {/* iPhone-style chrome: island + nav row (avatar · centered title · mail) */}
+          <header className="shrink-0 bg-white">
+            <div className="flex justify-center pt-3 pb-2" aria-hidden>
+              <div className="h-[31px] w-[126px] rounded-[20px] bg-stone-900 shadow-inner shadow-black/15" />
             </div>
-            <span className="text-[10px] text-stone-400 tracking-widest">
-              ●●●
-            </span>
-          </div>
+            <div className="flex items-center min-h-[44px] px-4 pb-3 pt-0.5">
+              <div className="w-11 shrink-0 flex justify-start items-center">
+                <div
+                  className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-sm font-medium text-stone-600 border border-stone-200"
+                  aria-hidden
+                >
+                  {mockProfile.initials}
+                </div>
+              </div>
+              <h1 className="flex-1 min-w-0 text-center font-display text-[30px] font-semibold tracking-[-0.02em] text-stone-900 leading-snug px-2">
+                Scraps
+              </h1>
+              <div className="w-11 shrink-0 flex justify-end items-center">
+                <button
+                  type="button"
+                  onClick={openNotifications}
+                  className={`relative w-10 h-10 rounded-full bg-stone-100 flex items-center justify-center text-stone-800 border border-stone-200/80 ${pressFlat}`}
+                  aria-label={
+                    unreadNotifs > 0
+                      ? `Notifications, ${unreadNotifs} unread`
+                      : "Notifications"
+                  }
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="3" y="5" width="18" height="14" rx="2" />
+                    <path d="m3 7 8.5 6.5a2 2 0 0 0 2.5 0L21 7" />
+                  </svg>
+                  {notifBadge !== null && (
+                    <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-[5px] rounded-full bg-red-500 text-white text-[10px] font-bold leading-none flex items-center justify-center tabular-nums ring-2 ring-white">
+                      {notifBadge}
+                    </span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </header>
 
-          {/* Screen content */}
-          <div className="flex-1 overflow-y-auto pb-24">
+          {/* Screen content — scrolls; nav stays pinned to the frame bottom */}
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain pb-[88px]">
             {activeTab === "pantry" && (
               <PantryDashboard
                 ingredients={ingredients}
                 onToggleShare={handleToggleShare}
+                onUpdateIngredient={handleUpdateIngredient}
               />
             )}
             {activeTab === "add" && (
               <AddIngredient onAdd={handleAddIngredient} />
             )}
-            {activeTab === "recipes" && <Recipes recipes={mockRecipes} />}
+            {activeTab === "recipes" && (
+              <Recipes recipes={mockRecipes} />
+            )}
             {activeTab === "social" && (
               <Social
                 friendPosts={mockFriendPosts}
                 mySharedIngredients={sharedIngredients}
-                onRequest={(id) => console.log("Requested:", id)}
+                exchangeRequests={mockExchangeRequests}
               />
             )}
             {activeTab === "profile" && <Profile profile={mockProfile} />}
@@ -176,27 +258,15 @@ export default function ScrapsApp() {
             <div className="flex items-center px-2 pt-2.5 pb-1">
               {tabs.map((tab) => {
                 const isActive = activeTab === tab.id;
-                const badge =
-                  tab.id === "profile" && unreadNotifs > 0
-                    ? unreadNotifs
-                    : tab.id === "pantry" && urgentCount > 0
-                    ? urgentCount
-                    : null;
                 return (
                   <button
                     key={tab.id}
+                    type="button"
                     onClick={() => setActiveTab(tab.id)}
-                    className="flex-1 flex flex-col items-center gap-1 py-1.5"
+                    className={`flex-1 flex flex-col items-center gap-1 py-1.5 rounded-xl ${pressFlat}`}
                     aria-label={tab.label}
                   >
-                    <div className="relative">
-                      <TabIcon id={tab.id} active={isActive} />
-                      {badge !== null && (
-                        <span className="absolute -top-1.5 -right-2 bg-red-500 text-white text-[9px] font-semibold tabular-nums w-[15px] h-[15px] rounded-full flex items-center justify-center">
-                          {badge}
-                        </span>
-                      )}
-                    </div>
+                    <TabIcon id={tab.id} active={isActive} />
                   </button>
                 );
               })}

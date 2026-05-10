@@ -1,13 +1,18 @@
 "use client";
-import React, { useState } from "react";
-import { Recipe } from "./types";
+import React, { useMemo, useState } from "react";
+import type {
+  CuisineTag,
+  DietaryTag,
+  IngredientMatchKind,
+  Recipe,
+} from "./types";
+import { pressDark, pressOutline } from "./pressableStyles";
+import { findUseSource, isExpiringIngredient } from "./recipeIngredientMeta";
 
 interface RecipesProps {
   recipes: Recipe[];
 }
 
-// Soft neutral tints for recipe card backgrounds — these are decorative,
-// not semantic. Cycled per card for visual variety.
 const cardTints = [
   "bg-stone-100",
   "bg-amber-50",
@@ -15,16 +20,279 @@ const cardTints = [
   "bg-stone-50",
 ];
 
+const DIETARY_OPTIONS: DietaryTag[] = [
+  "Vegetarian",
+  "Vegan",
+  "High Protein",
+  "Gluten Free",
+  "Dairy Free",
+];
+
+const TIME_OPTIONS = [
+  { id: "under15" as const, label: "Under 15 min", maxMin: 15 },
+  { id: "under30" as const, label: "Under 30 min", maxMin: 30 },
+  { id: "under60" as const, label: "Under 1 hour", maxMin: 60 },
+];
+
+const CUISINE_OPTIONS: CuisineTag[] = [
+  "Italian",
+  "Mexican",
+  "Asian",
+  "American",
+  "Mediterranean",
+  "Indian",
+];
+
+const DIFFICULTY_OPTIONS: Recipe["difficulty"][] = ["Easy", "Medium", "Hard"];
+
+const MATCH_OPTIONS: {
+  id: IngredientMatchKind;
+  label: string;
+}[] = [
+  { id: "pantry_only", label: "Uses only pantry items" },
+  { id: "missing_1", label: "Missing 1 ingredient" },
+  { id: "missing_2", label: "Missing 2 ingredients" },
+  { id: "friends_expiring", label: "Uses friends expiring items" },
+];
+
+function RecipeDetailSheet({
+  recipe,
+  onClose,
+}: {
+  recipe: Recipe;
+  onClose: () => void;
+}) {
+  const [requested, setRequested] = useState<Set<string>>(new Set());
+
+  const wasteAmt = recipe.wasteSavings ?? recipe.savingsEstimate;
+
+  const toggleRequest = (friendName: string, ingredientLabel: string) => {
+    const key = `${recipe.id}-${friendName}-${ingredientLabel}`;
+    setRequested((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-[125] flex items-end justify-center bg-stone-900/40">
+      <button
+        type="button"
+        aria-label="Close recipe"
+        className="absolute inset-0 z-0"
+        onClick={onClose}
+      />
+      <div className="relative z-10 w-full max-w-sm bg-white rounded-t-[28px] shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-stone-100 flex-shrink-0">
+          <h2 className="font-display text-[22px] text-stone-900 leading-tight pr-4">
+            {recipe.name}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className={`text-[13px] font-semibold text-stone-900 ${pressOutline} rounded-lg px-3 py-1.5 flex-shrink-0`}
+          >
+            Done
+          </button>
+        </div>
+        <div className="overflow-y-auto px-6 py-5 pb-8 flex flex-col gap-6">
+          <div className="flex items-center gap-4">
+            <span className="text-6xl">{recipe.emoji}</span>
+            <div className="text-[12px] text-stone-500 flex flex-wrap gap-x-2 gap-y-1">
+              <span>{recipe.cookTime}</span>
+              <span>·</span>
+              <span>{recipe.difficulty}</span>
+              <span>·</span>
+              <span className="tabular-nums">Saves ~${recipe.savingsEstimate}</span>
+            </div>
+          </div>
+
+          <section>
+            <h3 className="text-[11px] uppercase tracking-[0.12em] text-stone-400 font-medium mb-3">
+              Ingredients
+            </h3>
+            <ul className="flex flex-col gap-3">
+              {recipe.allIngredients.map((ing) => {
+                const exp = isExpiringIngredient(recipe, ing);
+                const src = findUseSource(recipe, ing);
+                const rk =
+                  src?.source === "friend" && src.friendName
+                    ? `${recipe.id}-${src.friendName}-${ing}`
+                    : null;
+                const didRequest = rk ? requested.has(rk) : false;
+
+                return (
+                  <li
+                    key={ing}
+                    className="border border-stone-100 rounded-xl px-3 py-2.5 bg-stone-50/50"
+                  >
+                    <div className="flex items-start gap-2">
+                      {exp && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
+                      )}
+                      {!exp && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-stone-300 mt-1.5 flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] font-medium text-stone-900">
+                          {ing}
+                        </p>
+                        {src?.source === "yours" && (
+                          <p className="text-[11px] text-emerald-700 mt-0.5">
+                            In your pantry
+                          </p>
+                        )}
+                        {src?.source === "friend" && src.friendName && (
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <p className="text-[11px] text-stone-600">
+                              {src.friendName} may have this — coordinate on
+                              Friends.
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleRequest(src.friendName!, ing)
+                              }
+                              className={`text-[11px] font-semibold px-3 py-1 rounded-full border ${
+                                didRequest
+                                  ? `bg-stone-100 text-stone-600 border-stone-300 ${pressOutline}`
+                                  : `bg-stone-900 text-white border-stone-900 ${pressDark}`
+                              }`}
+                            >
+                              {didRequest ? "Requested" : "Request"}
+                            </button>
+                          </div>
+                        )}
+                        {!src && exp && (
+                          <p className="text-[11px] text-red-600 mt-0.5">
+                            Expiring soon — using this saves waste.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {(recipe.usesSources?.length ?? 0) > 0 && (
+              <p className="text-[12px] text-stone-600 mt-4 leading-relaxed">
+                This recipe pulls from your pantry and friends’ surplus — about{" "}
+                <span className="font-semibold text-stone-900 tabular-nums">
+                  ${wasteAmt}
+                </span>{" "}
+                saved from waste when you cook it tonight.
+              </p>
+            )}
+          </section>
+
+          <section>
+            <h3 className="text-[11px] uppercase tracking-[0.12em] text-stone-400 font-medium mb-3">
+              Steps
+            </h3>
+            <ol className="flex flex-col gap-3 list-decimal list-inside marker:text-stone-400">
+              {recipe.steps.map((step, i) => (
+                <li
+                  key={i}
+                  className="text-[13px] text-stone-800 leading-relaxed pl-1"
+                >
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function recipePassesFilters(
+  r: Recipe,
+  dietary: Set<DietaryTag>,
+  timeId: string | null,
+  difficulty: Recipe["difficulty"] | null,
+  cuisine: CuisineTag | null,
+  match: IngredientMatchKind | null,
+  favoritesOnly: boolean,
+  favoriteIds: Set<string>
+): boolean {
+  if (favoritesOnly && !favoriteIds.has(r.id)) return false;
+  if (dietary.size > 0) {
+    const ok = r.dietaryTags.some((t) => dietary.has(t));
+    if (!ok) return false;
+  }
+  if (timeId) {
+    const opt = TIME_OPTIONS.find((o) => o.id === timeId);
+    if (opt && r.cookTimeMinutes > opt.maxMin) return false;
+  }
+  if (difficulty !== null && r.difficulty !== difficulty) return false;
+  if (cuisine !== null && r.cuisine !== cuisine) return false;
+  if (match !== null && r.ingredientMatch !== match) return false;
+  return true;
+}
+
 export default function Recipes({ recipes }: RecipesProps) {
-  const [filter, setFilter] = useState<"all" | "easy" | "quick">("all");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [dietary, setDietary] = useState<Set<DietaryTag>>(new Set());
+  const [timeId, setTimeId] = useState<string | null>(null);
+  const [difficulty, setDifficulty] = useState<Recipe["difficulty"] | null>(
+    null
+  );
+  const [cuisine, setCuisine] = useState<CuisineTag | null>(null);
+  const [match, setMatch] = useState<IngredientMatchKind | null>(null);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+
+  const [detailRecipe, setDetailRecipe] = useState<Recipe | null>(null);
+
   const [cooked, setCooked] = useState<Set<string>>(new Set());
   const [favorites, setFavorites] = useState<Set<string>>(new Set(["1"]));
 
-  const filtered = recipes.filter((r) => {
-    if (filter === "easy") return r.difficulty === "Easy";
-    if (filter === "quick") return parseInt(r.cookTime) <= 15;
-    return true;
-  });
+  const activeFilterCount = useMemo(() => {
+    let n = dietary.size;
+    if (timeId) n += 1;
+    if (difficulty !== null) n += 1;
+    if (cuisine !== null) n += 1;
+    if (match !== null) n += 1;
+    if (favoritesOnly) n += 1;
+    return n;
+  }, [dietary, timeId, difficulty, cuisine, match, favoritesOnly]);
+
+  const filtered = useMemo(
+    () =>
+      recipes.filter((r) =>
+        recipePassesFilters(
+          r,
+          dietary,
+          timeId,
+          difficulty,
+          cuisine,
+          match,
+          favoritesOnly,
+          favorites
+        )
+      ),
+    [recipes, dietary, timeId, difficulty, cuisine, match, favoritesOnly, favorites]
+  );
+
+  const toggleDietary = (tag: DietaryTag) => {
+    setDietary((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  };
+
+  const clearFilters = () => {
+    setDietary(new Set());
+    setTimeId(null);
+    setDifficulty(null);
+    setCuisine(null);
+    setMatch(null);
+    setFavoritesOnly(false);
+  };
 
   const toggleFav = (id: string) => {
     const next = new Set(favorites);
@@ -35,33 +303,25 @@ export default function Recipes({ recipes }: RecipesProps) {
 
   return (
     <div className="flex flex-col gap-7 px-6 pt-5 pb-2">
-      {/* Header avatars (consistent with Pantry header) */}
-      <div className="flex items-center justify-between">
-        <div className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-sm font-medium text-stone-600 border border-stone-200">
-          SC
-        </div>
-        <button className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <circle cx="6" cy="12" r="1.5" fill="#0c0a09" />
-            <circle cx="12" cy="12" r="1.5" fill="#0c0a09" />
-            <circle cx="18" cy="12" r="1.5" fill="#0c0a09" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Big serif title */}
       <div>
         <h1 className="font-display text-[34px] leading-[1.1] tracking-[-0.01em] text-stone-900">
           Cook tonight.
         </h1>
         <p className="text-[13px] text-stone-500 mt-3">
-          Recipes that use what's expiring.
+          Recipes that use what&apos;s expiring.
         </p>
       </div>
 
-      {/* Search bar with hairline underline (matches image 1) */}
       <div className="border-b border-stone-200 pb-3 flex items-center gap-3">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a8a29e" strokeWidth="1.5" strokeLinecap="round">
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#a8a29e"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        >
           <circle cx="11" cy="11" r="6" />
           <line x1="20" y1="20" x2="15.5" y2="15.5" />
         </svg>
@@ -70,52 +330,261 @@ export default function Recipes({ recipes }: RecipesProps) {
           placeholder="Search recipes"
           className="flex-1 bg-transparent text-[14px] text-stone-800 placeholder-stone-400 focus:outline-none"
         />
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0c0a09" strokeWidth="1.5" strokeLinecap="round">
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#0c0a09"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        >
           <line x1="4" y1="8" x2="20" y2="8" />
           <line x1="7" y1="12" x2="17" y2="12" />
           <line x1="10" y1="16" x2="14" y2="16" />
         </svg>
       </div>
 
-      {/* Pill filter row */}
-      <div className="flex gap-2 -mx-6 px-6 overflow-x-auto scrollbar-none">
-        {(["all", "easy", "quick"] as const).map((f) => {
-          const active = filter === f;
-          const label = f === "all" ? "All" : f === "easy" ? "Easy" : "Under 15 min";
-          return (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`flex-shrink-0 px-5 py-2 rounded-full text-[13px] font-medium transition-all border ${
-                active
-                  ? "bg-stone-900 text-white border-stone-900"
-                  : "bg-white text-stone-700 border-stone-300"
-              }`}
-            >
-              {label}
-            </button>
-          );
-        })}
-        <button className="flex-shrink-0 px-5 py-2 rounded-full text-[13px] font-medium bg-white text-stone-700 border border-stone-300">
-          Cuisines
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setFilterOpen(true)}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-full text-[13px] font-medium border border-stone-300 bg-white text-stone-800 ${pressOutline}`}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path d="M4 6h16M7 12h10M10 18h4" strokeLinecap="round" />
+          </svg>
+          Filters
+          {activeFilterCount > 0 && (
+            <span className="bg-stone-900 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums min-w-[18px] text-center">
+              {activeFilterCount}
+            </span>
+          )}
         </button>
+        {activeFilterCount > 0 && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className={`text-[12px] text-stone-500 underline underline-offset-2 px-2 py-1 rounded-md ${pressOutline}`}
+          >
+            Clear
+          </button>
+        )}
       </div>
 
-      {/* "Recommended for you" — serif heading */}
+      {filterOpen && (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-stone-900/40">
+          <button
+            type="button"
+            aria-label="Close filters"
+            className="absolute inset-0 z-0"
+            onClick={() => setFilterOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-sm bg-white rounded-t-[28px] shadow-2xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-stone-100">
+              <h2 className="font-display text-[22px] text-stone-900">Filters</h2>
+              <button
+                type="button"
+                onClick={() => setFilterOpen(false)}
+                className={`text-[13px] font-semibold text-stone-900 rounded-lg px-3 py-1.5 ${pressOutline}`}
+              >
+                Done
+              </button>
+            </div>
+            <div className="overflow-y-auto px-6 py-5 flex flex-col gap-6 pb-8">
+              <section>
+                <h3 className="text-[11px] uppercase tracking-[0.12em] text-stone-400 font-medium mb-2.5">
+                  Favorites
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setFavoritesOnly((v) => !v)}
+                  className={`w-full text-left px-4 py-3 rounded-2xl text-[13px] font-medium border transition-all ${
+                    favoritesOnly
+                      ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
+                      : `bg-white text-stone-700 border-stone-300 ${pressOutline}`
+                  }`}
+                >
+                  Favorites only
+                </button>
+              </section>
+
+              <section>
+                <h3 className="text-[11px] uppercase tracking-[0.12em] text-stone-400 font-medium mb-2.5">
+                  Dietary
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {DIETARY_OPTIONS.map((tag) => {
+                    const on = dietary.has(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => toggleDietary(tag)}
+                        className={`px-3.5 py-2 rounded-full text-[12px] font-medium border ${
+                          on
+                            ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
+                            : `bg-white text-stone-700 border-stone-300 ${pressOutline}`
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-[11px] uppercase tracking-[0.12em] text-stone-400 font-medium mb-2.5">
+                  Time
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {TIME_OPTIONS.map((opt) => {
+                    const on = timeId === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          setTimeId((prev) =>
+                            prev === opt.id ? null : opt.id
+                          )
+                        }
+                        className={`px-3.5 py-2 rounded-full text-[12px] font-medium border ${
+                          on
+                            ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
+                            : `bg-white text-stone-700 border-stone-300 ${pressOutline}`
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-[11px] uppercase tracking-[0.12em] text-stone-400 font-medium mb-2.5">
+                  Difficulty
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {DIFFICULTY_OPTIONS.map((d) => {
+                    const on = difficulty === d;
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() =>
+                          setDifficulty((prev) => (prev === d ? null : d))
+                        }
+                        className={`px-3.5 py-2 rounded-full text-[12px] font-medium border ${
+                          on
+                            ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
+                            : `bg-white text-stone-700 border-stone-300 ${pressOutline}`
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-[11px] uppercase tracking-[0.12em] text-stone-400 font-medium mb-2.5">
+                  Cuisines
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {CUISINE_OPTIONS.map((c) => {
+                    const on = cuisine === c;
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() =>
+                          setCuisine((prev) => (prev === c ? null : c))
+                        }
+                        className={`px-3.5 py-2 rounded-full text-[12px] font-medium border ${
+                          on
+                            ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
+                            : `bg-white text-stone-700 border-stone-300 ${pressOutline}`
+                        }`}
+                      >
+                        {c}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="text-[11px] uppercase tracking-[0.12em] text-stone-400 font-medium mb-2.5">
+                  Ingredient match
+                </h3>
+                <div className="flex flex-col gap-2">
+                  {MATCH_OPTIONS.map((opt) => {
+                    const on = match === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          setMatch((prev) =>
+                            prev === opt.id ? null : opt.id
+                          )
+                        }
+                        className={`text-left px-4 py-3 rounded-2xl text-[13px] font-medium border ${
+                          on
+                            ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
+                            : `bg-white text-stone-700 border-stone-300 ${pressOutline}`
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <button
+                type="button"
+                onClick={() => {
+                  clearFilters();
+                  setFilterOpen(false);
+                }}
+                className={`w-full py-3 rounded-full text-[13px] font-medium border border-stone-300 text-stone-700 ${pressOutline}`}
+              >
+                Reset all
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-baseline justify-between -mb-3">
         <h2 className="font-display text-[20px] text-stone-900 tracking-tight">
           Recommended for you
         </h2>
-        <button className="text-[12px] text-stone-500 underline underline-offset-2">
+        <button
+          type="button"
+          className={`text-[12px] text-stone-500 underline underline-offset-2 rounded-md px-1 ${pressOutline}`}
+        >
           View all
         </button>
       </div>
 
-      {/* Recipe cards — large, editorial, with heart overlay (matches image 1) */}
       <div className="flex flex-col gap-5">
         {filtered.map((recipe, idx) => {
           const isCookedNow = cooked.has(recipe.id);
           const isFav = favorites.has(recipe.id);
+
           return (
             <div
               key={recipe.id}
@@ -123,15 +592,76 @@ export default function Recipes({ recipes }: RecipesProps) {
                 isCookedNow ? "opacity-50" : ""
               }`}
             >
-              {/* Big "image" area — emoji on tinted background, with heart overlay */}
-              <div className={`relative ${cardTints[idx % cardTints.length]} rounded-[22px] aspect-[4/3] flex items-center justify-center overflow-hidden`}>
-                <span className="text-8xl" style={{ filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.08))" }}>
-                  {recipe.emoji}
-                </span>
-                {/* Heart button — top right, white circle */}
+              <div className="relative">
                 <button
-                  onClick={() => toggleFav(recipe.id)}
-                  className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center"
+                  type="button"
+                  onClick={() => setDetailRecipe(recipe)}
+                  className={`w-full text-left flex flex-col gap-3 rounded-2xl -mx-1 px-1 py-0.5 ${pressOutline}`}
+                >
+                  <div
+                    className={`relative ${cardTints[idx % cardTints.length]} rounded-[22px] aspect-[4/3] flex items-center justify-center overflow-hidden pointer-events-none`}
+                  >
+                    <span
+                      className="text-8xl"
+                      style={{
+                        filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.08))",
+                      }}
+                    >
+                      {recipe.emoji}
+                    </span>
+                    <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm rounded-full px-2.5 py-1 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                      <span className="text-[10px] font-medium text-stone-800 tracking-wide">
+                        Uses {recipe.expiringIngredients.length} expiring
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pointer-events-none">
+                    <h3 className="font-display text-[20px] text-stone-900 tracking-tight leading-snug">
+                      {recipe.name}
+                    </h3>
+                    <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                      <span className="text-[12px] text-stone-500">
+                        {recipe.cookTime}
+                      </span>
+                      <span className="text-stone-300">·</span>
+                      <span className="text-[12px] text-stone-500">
+                        {recipe.difficulty}
+                      </span>
+                      <span className="text-stone-300">·</span>
+                      <span className="text-[12px] text-stone-500 tabular-nums">
+                        Saves ~${recipe.savingsEstimate}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 pointer-events-none">
+                    {recipe.allIngredients.map((ing) => {
+                      const isExpiring =
+                        recipe.expiringIngredients.includes(ing);
+                      return (
+                        <span
+                          key={ing}
+                          className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-stone-200 text-stone-700 inline-flex items-center gap-1.5"
+                        >
+                          {isExpiring && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                          )}
+                          {ing}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFav(recipe.id);
+                  }}
+                  className={`absolute top-3 right-3 z-10 w-9 h-9 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center ${pressOutline}`}
+                  aria-label={isFav ? "Remove favorite" : "Save recipe"}
                 >
                   <svg
                     width="16"
@@ -145,67 +675,20 @@ export default function Recipes({ recipes }: RecipesProps) {
                     <path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z" />
                   </svg>
                 </button>
-                {/* Urgent badge — bottom left, only red dot */}
-                <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm rounded-full px-2.5 py-1 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                  <span className="text-[10px] font-medium text-stone-800 tracking-wide">
-                    Uses {recipe.expiringIngredients.length} expiring
-                  </span>
-                </div>
               </div>
 
-              {/* Title + meta */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <h3 className="font-display text-[20px] text-stone-900 tracking-tight leading-snug">
-                    {recipe.name}
-                  </h3>
-                  <div className="flex items-center gap-3 mt-1.5">
-                    <span className="text-[12px] text-stone-500">
-                      {recipe.cookTime}
-                    </span>
-                    <span className="text-stone-300">·</span>
-                    <span className="text-[12px] text-stone-500">
-                      {recipe.difficulty}
-                    </span>
-                    <span className="text-stone-300">·</span>
-                    <span className="text-[12px] text-stone-500 tabular-nums">
-                      Saves ~${recipe.savingsEstimate}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Ingredient chips — minimal, hairline border */}
-              <div className="flex flex-wrap gap-1.5">
-                {recipe.allIngredients.map((ing) => {
-                  const isExpiring = recipe.expiringIngredients.includes(ing);
-                  return (
-                    <span
-                      key={ing}
-                      className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-stone-200 text-stone-700 flex items-center gap-1.5"
-                    >
-                      {isExpiring && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                      )}
-                      {ing}
-                    </span>
-                  );
-                })}
-              </div>
-
-              {/* CTA — primary black button */}
               <button
+                type="button"
                 onClick={() => {
                   const next = new Set(cooked);
                   if (isCookedNow) next.delete(recipe.id);
                   else next.add(recipe.id);
                   setCooked(next);
                 }}
-                className={`w-full py-3.5 rounded-full text-[13px] font-medium tracking-wide transition-all active:scale-[0.99] mt-1 ${
+                className={`w-full py-3.5 rounded-full text-[13px] font-medium tracking-wide mt-1 ${
                   isCookedNow
-                    ? "bg-white text-stone-900 border border-stone-300"
-                    : "bg-stone-900 text-white"
+                    ? `bg-white text-stone-900 border border-stone-300 ${pressOutline}`
+                    : `bg-stone-900 text-white ${pressDark}`
                 }`}
               >
                 {isCookedNow ? "Marked as cooked ✓" : "Cook this tonight"}
@@ -214,6 +697,19 @@ export default function Recipes({ recipes }: RecipesProps) {
           );
         })}
       </div>
+
+      {detailRecipe && (
+        <RecipeDetailSheet
+          recipe={detailRecipe}
+          onClose={() => setDetailRecipe(null)}
+        />
+      )}
+
+      {filtered.length === 0 && (
+        <p className="text-[14px] text-stone-500 text-center py-8">
+          No recipes match these filters. Try adjusting or clearing filters.
+        </p>
+      )}
     </div>
   );
 }

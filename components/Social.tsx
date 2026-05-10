@@ -1,11 +1,17 @@
 "use client";
 import React, { useState } from "react";
-import { FriendPost, Ingredient, UrgencyLevel } from "./types";
+import type {
+  FriendPost,
+  Ingredient,
+  IngredientExchangeRequest,
+  UrgencyLevel,
+} from "./types";
+import { pressDark, pressOutline } from "./pressableStyles";
 
 interface SocialProps {
   friendPosts: FriendPost[];
   mySharedIngredients: Ingredient[];
-  onRequest: (id: string) => void;
+  exchangeRequests: IngredientExchangeRequest[];
 }
 
 const urgencyDot: Record<UrgencyLevel, string> = {
@@ -20,7 +26,6 @@ const urgencyText: Record<UrgencyLevel, string> = {
   green: "text-stone-500",
 };
 
-// Neutral avatar tints — not semantic, just visual variety
 const avatarTints = [
   "bg-stone-100 text-stone-700",
   "bg-stone-200 text-stone-700",
@@ -28,73 +33,80 @@ const avatarTints = [
   "bg-stone-50 text-stone-700",
 ];
 
+const statusStyle: Record<
+  IngredientExchangeRequest["status"],
+  string
+> = {
+  pending: "bg-amber-100 text-amber-900 border-amber-200",
+  approved: "bg-emerald-100 text-emerald-900 border-emerald-200",
+  declined: "bg-red-100 text-red-900 border-red-200",
+};
+
 export default function Social({
   friendPosts,
   mySharedIngredients,
-  onRequest,
+  exchangeRequests,
 }: SocialProps) {
-  const [tab, setTab] = useState<"available" | "mine">("available");
+  const [tab, setTab] = useState<"available" | "mine" | "requests">(
+    "available"
+  );
   const [posts, setPosts] = useState(friendPosts);
 
-  const handleRequest = (id: string) => {
+  const toggleRequest = (id: string) => {
     setPosts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, requested: true } : p))
+      prev.map((p) =>
+        p.id === id ? { ...p, requested: !p.requested } : p
+      )
     );
-    onRequest(id);
   };
 
   const urgentPosts = posts.filter((p) => p.urgency === "red");
   const otherPosts = posts.filter((p) => p.urgency !== "red");
 
+  const outgoing = exchangeRequests.filter((r) => r.direction === "outgoing");
+  const incoming = exchangeRequests.filter((r) => r.direction === "incoming");
+
   return (
     <div className="flex flex-col gap-7 px-6 pt-5 pb-2">
-      {/* Header avatars */}
-      <div className="flex items-center justify-between">
-        <div className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-sm font-medium text-stone-600 border border-stone-200">
-          SC
-        </div>
-        <button className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <circle cx="6" cy="12" r="1.5" fill="#0c0a09" />
-            <circle cx="12" cy="12" r="1.5" fill="#0c0a09" />
-            <circle cx="18" cy="12" r="1.5" fill="#0c0a09" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Title */}
       <div>
         <h1 className="font-display text-[34px] leading-[1.1] tracking-[-0.01em] text-stone-900">
           Friends.
         </h1>
         <p className="text-[13px] text-stone-500 mt-3">
-          Claim what's expiring or share your surplus.
+          Claim what&apos;s expiring or share your surplus.
         </p>
       </div>
 
-      {/* Tab pills */}
-      <div className="flex gap-2">
-        {(["available", "mine"] as const).map((t) => {
-          const active = tab === t;
-          return (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 py-2.5 rounded-full text-[13px] font-medium transition-all border ${
-                active
-                  ? "bg-stone-900 text-white border-stone-900"
-                  : "bg-white text-stone-700 border-stone-300"
-              }`}
-            >
-              {t === "available" ? "From friends" : "My posts"}
-            </button>
-          );
-        })}
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          {(
+            [
+              ["available", "From friends"],
+              ["mine", "My posts"],
+              ["requests", "Requests"],
+            ] as const
+          ).map(([id, label]) => {
+            const active = tab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className={`flex-1 min-w-0 py-2.5 rounded-full text-[12px] font-medium border ${
+                  active
+                    ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
+                    : `bg-white text-stone-700 border-stone-300 ${pressOutline}`
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {tab === "available" ? (
         <div className="flex flex-col gap-1">
-          {/* Urgent section */}
           {urgentPosts.length > 0 && (
             <>
               <div className="flex items-center gap-2 mb-3">
@@ -109,7 +121,7 @@ export default function Social({
                     key={post.id}
                     post={post}
                     avatarColor={avatarTints[i % avatarTints.length]}
-                    onRequest={handleRequest}
+                    onToggleRequest={toggleRequest}
                   />
                 ))}
               </div>
@@ -132,19 +144,20 @@ export default function Social({
                     avatarColor={
                       avatarTints[(i + urgentPosts.length) % avatarTints.length]
                     }
-                    onRequest={handleRequest}
+                    onToggleRequest={toggleRequest}
                   />
                 ))}
               </div>
             </>
           )}
         </div>
-      ) : (
+      ) : tab === "mine" ? (
         <div className="flex flex-col gap-3">
           <div className="border border-stone-200 rounded-2xl px-4 py-3.5">
             <p className="text-[12px] text-stone-600 leading-relaxed">
               <span className="font-medium text-stone-900">Auto-share:</span>{" "}
-              items expiring within 2 days appear here automatically. You can also share surplus manually from your pantry.
+              items expiring within 2 days appear here automatically. You can
+              also share surplus manually from your pantry.
             </p>
           </div>
 
@@ -198,7 +211,90 @@ export default function Social({
             ))
           )}
         </div>
+      ) : (
+        <div className="flex flex-col gap-6">
+          <p className="text-[12px] text-stone-500 leading-relaxed">
+            Track ingredient requests you&apos;ve sent and requests friends have
+            sent you.
+          </p>
+
+          {outgoing.length > 0 && (
+            <section>
+              <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-medium mb-3">
+                You requested
+              </h2>
+              <div className="flex flex-col gap-3">
+                {outgoing.map((r) => (
+                  <ExchangeRequestRow key={r.id} request={r} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {incoming.length > 0 && (
+            <section>
+              <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-medium mb-3">
+                Requested from you
+              </h2>
+              <div className="flex flex-col gap-3">
+                {incoming.map((r) => (
+                  <ExchangeRequestRow key={r.id} request={r} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {outgoing.length === 0 && incoming.length === 0 && (
+            <p className="text-[13px] text-stone-500 text-center py-12">
+              No requests yet.
+            </p>
+          )}
+        </div>
       )}
+    </div>
+  );
+}
+
+function ExchangeRequestRow({
+  request,
+}: {
+  request: IngredientExchangeRequest;
+}) {
+  const label =
+    request.direction === "outgoing"
+      ? `From ${request.counterpartyName}`
+      : `${request.counterpartyName} asked you`;
+
+  return (
+    <div className="bg-white border border-stone-200 rounded-2xl p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div
+            className={`w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-semibold flex-shrink-0 bg-stone-100 text-stone-700`}
+          >
+            {request.counterpartyInitials}
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-stone-500">{label}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xl">{request.ingredientEmoji}</span>
+              <p className="text-[14px] font-medium text-stone-900 truncate">
+                {request.ingredientName}
+              </p>
+            </div>
+            <p className="text-[11px] text-stone-400 mt-0.5">{request.quantity}</p>
+          </div>
+        </div>
+        <span
+          className={`text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border flex-shrink-0 ${statusStyle[request.status]}`}
+        >
+          {request.status === "pending"
+            ? "Pending"
+            : request.status === "approved"
+            ? "Approved"
+            : "Declined"}
+        </span>
+      </div>
     </div>
   );
 }
@@ -206,13 +302,13 @@ export default function Social({
 function FriendPostCard({
   post,
   avatarColor,
-  onRequest,
+  onToggleRequest,
 }: {
   post: FriendPost;
   avatarColor: string;
-  onRequest: (id: string) => void;
+  onToggleRequest: (id: string) => void;
 }) {
-  const urgencyDot: Record<UrgencyLevel, string> = {
+  const uDot: Record<UrgencyLevel, string> = {
     red: "bg-red-500",
     yellow: "bg-amber-400",
     green: "bg-emerald-500",
@@ -220,7 +316,6 @@ function FriendPostCard({
 
   return (
     <div className="bg-white border border-stone-200 rounded-2xl p-4">
-      {/* Friend row */}
       <div className="flex items-center gap-3 mb-3.5">
         <div
           className={`w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-semibold ${avatarColor}`}
@@ -236,14 +331,13 @@ function FriendPostCard({
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${urgencyDot[post.urgency]}`} />
+          <span className={`w-1.5 h-1.5 rounded-full ${uDot[post.urgency]}`} />
           <span className="text-[11px] text-stone-600 tabular-nums">
             {post.daysLeft <= 1 ? "1 day" : `${post.daysLeft} days`}
           </span>
         </div>
       </div>
 
-      {/* Item row */}
       <div className="flex items-center justify-between gap-3 pt-3 border-t border-stone-100">
         <div className="flex items-center gap-3 min-w-0">
           <span className="text-2xl flex-shrink-0">{post.ingredientEmoji}</span>
@@ -255,15 +349,15 @@ function FriendPostCard({
           </div>
         </div>
         <button
-          onClick={() => onRequest(post.id)}
-          disabled={post.requested}
-          className={`px-4 py-2 rounded-full text-[12px] font-medium transition-all active:scale-[0.97] flex-shrink-0 ${
+          type="button"
+          onClick={() => onToggleRequest(post.id)}
+          className={`px-4 py-2 rounded-full text-[12px] font-medium flex-shrink-0 ${
             post.requested
-              ? "bg-white text-stone-500 border border-stone-200"
-              : "bg-stone-900 text-white"
+              ? `bg-white text-stone-700 border border-stone-300 ${pressOutline}`
+              : `bg-stone-900 text-white ${pressDark}`
           }`}
         >
-          {post.requested ? "Requested ✓" : "Request"}
+          {post.requested ? "Requested" : "Request"}
         </button>
       </div>
     </div>
