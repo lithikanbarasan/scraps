@@ -1,8 +1,9 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import PantryDashboard from "./PantryDashboard";
 import AddIngredient from "./AddIngredient";
 import Recipes from "./Recipes";
+import { fetchRecipesByIngredients } from "./fetchRecipes";
 import Social from "./Social";
 import Profile from "./Profile";
 import NotificationsSheet from "./NotificationsSheet";
@@ -14,6 +15,7 @@ import {
   Ingredient,
   IngredientExchangeRequest,
   NotificationPreferences,
+  Recipe,
   UserProfile,
 } from "./types";
 import { filterNotificationsByPreferences } from "./notificationsFilter";
@@ -95,6 +97,10 @@ function TabIcon({ id, active }: { id: Tab; active: boolean }) {
   }
 }
 
+type AddIngredientOptions = {
+  stayOnAddTab?: boolean;
+};
+
 export default function ScrapsApp() {
   const [activeTab, setActiveTab] = useState<Tab>("pantry");
   const [ingredients, setIngredients] = useState<Ingredient[]>(mockIngredients);
@@ -107,48 +113,77 @@ export default function ScrapsApp() {
   >(mockExchangeRequests);
   const [notificationPrefs, setNotificationPrefs] =
     useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
-    const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>("mi");
+  const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>("mi");
+  const [apiRecipes, setApiRecipes] = useState<Recipe[]>([]);
+  const pantryRedirectTimeoutRef = useRef<number | null>(null);
 
-    const ingredientMatchKey = (
-      name: string,
-      expiryDate?: string
-    ) => {
-      return `${name.toLowerCase()}-${expiryDate ?? "none"}`;
+  useEffect(() => {
+    let cancelled = false;
+    fetchRecipesByIngredients(ingredients).then((recipes) => {
+      if (!cancelled) setApiRecipes(recipes);
+    });
+    return () => {
+      cancelled = true;
     };
-    
-    const handleAddIngredient = (newIng: Ingredient) => {
-      setIngredients((prev) => {
-        const key = ingredientMatchKey(newIng.name, newIng.expiryDate);
-    
-        const i = prev.findIndex(
-          (x) => ingredientMatchKey(x.name, x.expiryDate) === key
-        );
-    
-        if (i >= 0) {
-          const existing = prev[i];
-    
-          const merged: Ingredient = {
-            ...existing,
-            count: existing.count + newIng.count,
-            estimatedValue:
-              existing.estimatedValue + newIng.estimatedValue,
-            isShared: existing.isShared || newIng.isShared,
-            autoShared: existing.autoShared || newIng.autoShared,
-          };
-    
-          const next = [...prev];
-          next[i] = merged;
-    
-          return next.sort((a, b) => a.daysLeft - b.daysLeft);
-        }
-    
-        const updated = [newIng, ...prev];
-    
-        return updated.sort((a, b) => a.daysLeft - b.daysLeft);
-      });
-    
-      setTimeout(() => setActiveTab("pantry"), 1200);
+  }, [ingredients]);
+
+  useEffect(() => {
+    return () => {
+      if (pantryRedirectTimeoutRef.current !== null) {
+        window.clearTimeout(pantryRedirectTimeoutRef.current);
+      }
     };
+  }, []);
+
+  const ingredientMatchKey = (name: string, expiryDate?: string) => {
+    return `${name.toLowerCase()}-${expiryDate ?? "none"}`;
+  };
+
+  const handleAddIngredient = (
+    newIng: Ingredient,
+    options?: AddIngredientOptions
+  ) => {
+    setIngredients((prev) => {
+      const key = ingredientMatchKey(newIng.name, newIng.expiryDate);
+
+      const i = prev.findIndex(
+        (x) => ingredientMatchKey(x.name, x.expiryDate) === key
+      );
+
+      if (i >= 0) {
+        const existing = prev[i];
+
+        const merged: Ingredient = {
+          ...existing,
+          count: existing.count + newIng.count,
+          estimatedValue: existing.estimatedValue + newIng.estimatedValue,
+          isShared: existing.isShared || newIng.isShared,
+          autoShared: existing.autoShared || newIng.autoShared,
+        };
+
+        const next = [...prev];
+        next[i] = merged;
+
+        return next.sort((a, b) => a.daysLeft - b.daysLeft);
+      }
+
+      const updated = [newIng, ...prev];
+
+      return updated.sort((a, b) => a.daysLeft - b.daysLeft);
+    });
+
+    if (pantryRedirectTimeoutRef.current !== null) {
+      window.clearTimeout(pantryRedirectTimeoutRef.current);
+      pantryRedirectTimeoutRef.current = null;
+    }
+
+    if (!options?.stayOnAddTab) {
+      pantryRedirectTimeoutRef.current = window.setTimeout(() => {
+        setActiveTab("pantry");
+        pantryRedirectTimeoutRef.current = null;
+      }, 1200);
+    }
+  };
 
   const handleRemoveIngredient = (id: string) => {
     setIngredients((prev) => prev.filter((ing) => ing.id !== id));
@@ -334,9 +369,7 @@ export default function ScrapsApp() {
             {activeTab === "add" && (
               <AddIngredient onAdd={handleAddIngredient} />
             )}
-            {activeTab === "recipes" && (
-              <Recipes pantryIngredients={ingredients} />
-            )}
+            {activeTab === "recipes" && <Recipes recipes={apiRecipes} />}
             {activeTab === "social" && (
               <Social
                 friendPosts={mockFriendPosts}
