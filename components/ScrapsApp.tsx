@@ -36,7 +36,7 @@ const tabs: { id: Tab; label: string }[] = [
   { id: "profile", label: "Home" },
 ];
 
-// Monoline icons — 1.5 stroke, neutral, consistent geometry
+// Monoline icons: 1.5 stroke, neutral, consistent geometry
 function TabIcon({ id, active }: { id: Tab; active: boolean }) {
   const stroke = active ? "#0c0a09" : "#a8a29e";
   const common = {
@@ -51,7 +51,7 @@ function TabIcon({ id, active }: { id: Tab; active: boolean }) {
   };
   switch (id) {
     case "pantry":
-      // Grocery basket + handle — pantry ingredients (no jar, no tab badge)
+      // Grocery basket + handle, pantry ingredients (no jar, no tab badge)
       return (
         <svg {...common}>
           <path d="M8 9V7.5a4 4 0 018 0V9" />
@@ -66,7 +66,7 @@ function TabIcon({ id, active }: { id: Tab; active: boolean }) {
         </svg>
       );
     case "recipes":
-      // Fork & knife — “meals” / dining (readable at 22px)
+      // Fork & knife, "meals" / dining (readable at 22px)
       return (
         <svg {...common}>
           <path d="M8 4v15" />
@@ -86,10 +86,12 @@ function TabIcon({ id, active }: { id: Tab; active: boolean }) {
         </svg>
       );
     case "profile":
-      // Home
+      // Settings / more
       return (
         <svg {...common}>
-          <path d="M4 11 12 5l8 6v9h-5v-6H9v6H4v-9z" />
+          <line x1="5" y1="7" x2="19" y2="7" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+          <line x1="5" y1="17" x2="19" y2="17" />
         </svg>
       );
   }
@@ -152,6 +154,19 @@ export default function ScrapsApp() {
 
   const handleRemoveIngredient = (id: string) => {
     setIngredients((prev) => prev.filter((ing) => ing.id !== id));
+  };
+
+  const ingredientLineMatchesPantry = (pantryName: string, recipeLine: string) => {
+    const p = pantryName.toLowerCase().trim();
+    const r = recipeLine.toLowerCase().trim();
+    if (!p || !r) return false;
+    if (r === p) return true;
+    if (r.includes(p) || p.includes(r)) return true;
+    const pWords = p.split(/\s+/).filter((w) => w.length > 2);
+    const rWords = r.split(/\s+/).filter((w) => w.length > 2);
+    return pWords.some((pw) =>
+      rWords.some((rw) => rw.includes(pw) || pw.includes(rw))
+    );
   };
 
   const handleToggleShare = (id: string) => {
@@ -221,6 +236,83 @@ export default function ScrapsApp() {
     setProfile((p) => ({ ...p, name: next.name, initials: next.initials }));
   };
 
+  const handleMealsCookedChange = (delta: number) => {
+    setProfile((prev) => ({
+      ...prev,
+      mealsCooked: Math.max(0, prev.mealsCooked + delta),
+    }));
+  };
+
+  const handleRecipeCookToggle = (recipe: Recipe, nowCooked: boolean) => {
+    if (!nowCooked) return;
+    let recoveredValue = 0;
+
+    setIngredients((prev) => {
+      const next: Ingredient[] = [];
+      const remainingLines = [...recipe.allIngredients];
+
+      for (const ing of prev) {
+        const lineIdx = remainingLines.findIndex((line) =>
+          ingredientLineMatchesPantry(ing.name, line)
+        );
+        if (lineIdx < 0) {
+          next.push(ing);
+          continue;
+        }
+
+        remainingLines.splice(lineIdx, 1);
+        const unitValue = ing.count > 0 ? ing.estimatedValue / ing.count : 0;
+        const newCount = ing.count - 1;
+        recoveredValue += unitValue;
+
+        if (newCount > 0) {
+          next.push({
+            ...ing,
+            count: newCount,
+            estimatedValue: Math.max(0, ing.estimatedValue - unitValue),
+          });
+        }
+      }
+
+      return next.sort((a, b) => a.daysLeft - b.daysLeft);
+    });
+
+    if (recoveredValue > 0) {
+      setProfile((prev) => ({
+        ...prev,
+        savedThisMonth: Number((prev.savedThisMonth + recoveredValue).toFixed(2)),
+      }));
+    }
+  };
+
+  const handleRecipeRequestIngredient = (
+    friendName: string,
+    ingredientLabel: string
+  ) => {
+    const requestId = `outgoing-recipe-${friendName}-${ingredientLabel}`.toLowerCase();
+    setExchangeRequests((prev) => {
+      if (prev.some((r) => r.id === requestId)) return prev;
+      return [
+        ...prev,
+        {
+          id: requestId,
+          direction: "outgoing",
+          counterpartyName: friendName,
+          counterpartyInitials: friendName
+            .split(/\s+/)
+            .map((p) => p[0] ?? "")
+            .join("")
+            .slice(0, 2)
+            .toUpperCase(),
+          ingredientName: ingredientLabel,
+          ingredientEmoji: "🥬",
+          quantity: "1 count",
+          status: "pending",
+        },
+      ];
+    });
+  };
+
   const handleSignOut = () => {
     setIngredients(mockIngredients);
     setProfile(mockProfile);
@@ -238,7 +330,7 @@ export default function ScrapsApp() {
 
   return (
     <>
-      {/* Font loading — Playfair (display serif) + Inter (body sans) */}
+      {/* Font loading: Playfair (display serif) + Inter (body sans) */}
       <style jsx global>{`
         @import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Inter:wght@400;500;600&display=swap");
         .font-display {
@@ -251,7 +343,7 @@ export default function ScrapsApp() {
       `}</style>
 
       <div className="min-h-screen bg-stone-200 flex items-start justify-center py-6 px-4 font-sans-i">
-        {/* Phone frame — fixed height so the tab bar stays at the bottom of the screen */}
+        {/* Phone frame, fixed height so the tab bar stays at the bottom of the screen */}
         <div className="relative w-full max-w-sm bg-white rounded-[44px] border border-stone-300 overflow-hidden shadow-2xl flex flex-col h-[812px] max-h-[calc(100vh-48px)]">
           <NotificationsSheet
             open={notificationsOpen}
@@ -320,7 +412,7 @@ export default function ScrapsApp() {
             </div>
           </header>
 
-          {/* Screen content — scrolls; nav stays pinned to the frame bottom */}
+          {/* Screen content, scrolls; nav stays pinned to the frame bottom */}
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain pb-[88px]">
             {activeTab === "pantry" && (
               <PantryDashboard
@@ -334,9 +426,14 @@ export default function ScrapsApp() {
             {activeTab === "add" && (
               <AddIngredient onAdd={handleAddIngredient} />
             )}
-            {activeTab === "recipes" && (
-              <Recipes pantryIngredients={ingredients} />
-            )}
+            <div className={activeTab === "recipes" ? "block" : "hidden"}>
+              <Recipes
+                pantryIngredients={ingredients}
+                onMealsCookedChange={handleMealsCookedChange}
+                onRecipeCookToggle={handleRecipeCookToggle}
+                onRequestIngredient={handleRecipeRequestIngredient}
+              />
+            </div>
             {activeTab === "social" && (
               <Social
                 friendPosts={mockFriendPosts}
@@ -358,8 +455,8 @@ export default function ScrapsApp() {
             )}
           </div>
 
-          {/* Bottom nav — flat 5 tabs, monoline icons, hairline top border */}
-          <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-stone-100">
+          {/* Bottom nav, flat 5 tabs, monoline icons, hairline top border */}
+          <div className="absolute bottom-0 left-0 right-0 z-30 bg-white border-t border-stone-100">
             <div className="flex items-center px-2 pt-2.5 pb-1">
               {tabs.map((tab) => {
                 const isActive = activeTab === tab.id;

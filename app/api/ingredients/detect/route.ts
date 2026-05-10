@@ -54,6 +54,18 @@ function getRekognitionClient() {
   });
 }
 
+function getCustomModelConfig() {
+  const projectVersionArn = process.env.AWS_REKOGNITION_PROJECT_VERSION_ARN?.trim();
+  const minConfidenceRaw = process.env.AWS_REKOGNITION_CUSTOM_MIN_CONFIDENCE?.trim();
+  const minConfidence =
+    minConfidenceRaw && !Number.isNaN(Number(minConfidenceRaw))
+      ? Number(minConfidenceRaw)
+      : 55;
+
+  if (!projectVersionArn) return null;
+  return { projectVersionArn, minConfidence };
+}
+
 function mergeDetectedItems(
   primary: DetectedItem[],
   supplements: DetectedItem[]
@@ -99,6 +111,40 @@ export async function POST(req: Request) {
     });
 
     const response = await client.send(command);
+    const customConfig = getCustomModelConfig();
+
+    if (customConfig) {
+      const customResponse = await client.send(
+        new DetectCustomLabelsCommand({
+          ProjectVersionArn: customConfig.projectVersionArn,
+          Image: { Bytes: Buffer.from(imageBase64, "base64") },
+          MinConfidence: customConfig.minConfidence,
+        })
+      );
+
+      const customIngredients = toDetectedIngredients(
+        (customResponse.CustomLabels ?? []).map((label) => ({
+          // Class names should come from your trained dataset labels.
+          name: label.Name ?? "",
+          // One bounding box per detected item enables per-item counting.
+          instanceCount: label.Geometry?.BoundingBox ? 1 : 0,
+          confidence: label.Confidence ?? 0,
+        })),
+        {
+          allowUncounted: false,
+          minConfidence: customConfig.minConfidence,
+        }
+      ).slice(0, 20);
+
+      if (customIngredients.length > 0) {
+        return NextResponse.json({
+          ingredients: customIngredients,
+          labels: customIngredients.map((item) => item.name),
+          detector: "rekognition-custom-labels",
+        });
+      }
+    }
+
     const allLabels = response.Labels ?? [];
     const foodLikely = allLabels
       .filter((label) => {
@@ -145,6 +191,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ingredients,
       labels: ingredients.map((item) => item.name),
+      detector: "rekognition-detect-labels",
     });
   } catch (error: unknown) {
     const message =

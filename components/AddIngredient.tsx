@@ -214,7 +214,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
   };
 
   const inputClass =
-    "w-full bg-transparent border-0 border-b border-stone-200 focus:border-stone-900 px-0 py-3 text-[15px] text-stone-900 placeholder-stone-300 focus:outline-none focus:ring-0 transition-colors";
+    "w-full bg-transparent border-0 border-b border-stone-200 focus:border-stone-900 px-0 py-3 text-[15px] font-normal text-stone-900 placeholder-stone-300 focus:outline-none focus:ring-0 transition-colors";
 
   return (
     <div className="flex flex-col gap-7 px-6 pt-5 pb-2">
@@ -240,19 +240,25 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
             <div className="overflow-y-auto px-6 py-5 pb-6 flex flex-col gap-3">
               {reviewItems.map((item) => (
                 <div key={item.id} className="grid grid-cols-[1fr_78px_32px] gap-2 items-center">
-                  <input
-                    type="text"
-                    value={item.name}
-                    onChange={(e) =>
-                      setReviewItems((prev) =>
-                        prev.map((x) =>
-                          x.id === item.id ? { ...x, name: e.target.value } : x
+                  <div className="relative">
+                    <span
+                      aria-hidden
+                      className="absolute left-3 top-1/2 -translate-y-1/2 w-[2px] h-5 bg-stone-900/80 animate-pulse"
+                    />
+                    <input
+                      type="text"
+                      value={item.name}
+                      onChange={(e) =>
+                        setReviewItems((prev) =>
+                          prev.map((x) =>
+                            x.id === item.id ? { ...x, name: e.target.value } : x
+                          )
                         )
-                      )
-                    }
-                    placeholder="Ingredient name"
-                    className="border border-stone-200 rounded-xl px-3 py-2 text-[14px] focus:outline-none focus:border-stone-900"
-                  />
+                      }
+                      placeholder="Ingredient name"
+                      className="w-full border border-stone-300 rounded-xl pl-7 pr-3 py-2 text-[14px] text-stone-900 placeholder-stone-400 focus:outline-none focus:border-stone-900 caret-stone-900"
+                    />
+                  </div>
                   <input
                     type="number"
                     min={1}
@@ -266,7 +272,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
                         )
                       )
                     }
-                    className="border border-stone-200 rounded-xl px-2 py-2 text-[14px] focus:outline-none focus:border-stone-900 text-center"
+                    className="border border-stone-300 rounded-xl px-2 py-2 text-[14px] text-stone-900 placeholder-stone-400 focus:outline-none focus:border-stone-900 caret-stone-900 text-center"
                   />
                   <button
                     type="button"
@@ -430,7 +436,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
               <select
                 value={unit}
                 onChange={(e) => setUnit(e.target.value)}
-                className={`${inputClass} appearance-none cursor-pointer`}
+                className={`${inputClass} appearance-none cursor-pointer text-stone-700`}
               >
                 {["count", "oz", "lbs", "kg", "g", "pint", "bag", "gallon", "cup", "bunch"].map((u) => (
                   <option key={u}>{u}</option>
@@ -448,7 +454,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
               type="date"
               value={expiryDate}
               onChange={(e) => setExpiryDate(e.target.value)}
-              className={inputClass}
+              className={`${inputClass} text-stone-700`}
             />
             {expiryDate && (
               <div className="mt-2 flex items-center gap-2">
@@ -472,8 +478,8 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
             <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
               Estimated value
             </label>
-            <div className="relative">
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[15px] text-stone-400 pt-3">
+            <div className="flex items-center gap-1 border-b border-stone-200">
+              <span className="text-[15px] text-stone-400 pt-[1px]">
                 $
               </span>
               <input
@@ -482,7 +488,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
                 onChange={(e) => setEstimatedValue(e.target.value)}
                 placeholder="0.00"
                 step="0.01"
-                className={`${inputClass} pl-4`}
+                className="flex-1 bg-transparent py-3 text-[15px] text-stone-900 placeholder-stone-300 focus:outline-none"
               />
             </div>
           </div>
