@@ -1,22 +1,68 @@
+# Scraps
+
+Scraps is a pantry management and food waste reduction platform designed for college students. The app helps users track ingredients, discover recipes based on available food, identify expiring items, and coordinate ingredient sharing with friends to reduce unnecessary grocery waste.
+
+## Features
+
+* Pantry-based recipe recommendations
+* Expiration-aware ingredient tracking
+* Community pantry and ingredient sharing
+* Recipe filtering and search
+* AWS-powered ingredient image recognition
+* Favorite recipes and cooking history
+* Responsive mobile-first interface
+
+---
+
+## Tech Stack
+
+### Frontend
+
+* Next.js 
+* React
+* TypeScript
+* Tailwind CSS
+
+### APIs & Services
+
+* AWS Rekognition
+* TheMealDB API
+
+
+## Getting Started
+
+Clone the repository:
+
+```bash
+git clone https://github.com/your-username/scraps.git
+cd scraps
+```
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```txt
+http://localhost:3000
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Environment Variables
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Create a `.env.local` file in the project root:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```env
+AWS_REGION=your_region
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+```
