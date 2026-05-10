@@ -15,7 +15,8 @@ interface RecipesProps {
 }
 
 function pantryFetchKey(ingredients: Ingredient[]): string {
-  return [...ingredients]
+  return ingredients
+    .filter(Boolean)
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((i) => `${i.name}|${i.count}|${i.urgency}|${i.daysLeft}`)
     .join(";");
@@ -154,7 +155,7 @@ function RecipeDetailSheet({
                 return (
                   <li
                     key={`${recipe.id}-detail-ing-${ingIdx}-${ing}`}
-                  key={`${ing}-${i}`}
+                  
                     className="border border-stone-100 rounded-xl px-3 py-2.5 bg-stone-50/50"
                   >
                     <div className="flex items-start gap-2">
@@ -262,7 +263,7 @@ function recipePassesFilters(
   return true;
 }
 
-export default function Recipes({ pantryIngredients }: RecipesProps) {
+export default function Recipes({ pantryIngredients = []}: RecipesProps) {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -282,7 +283,6 @@ export default function Recipes({ pantryIngredients }: RecipesProps) {
 
   const [cooked, setCooked] = useState<Set<string>>(new Set());
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState("");
 
   const [visibleCount, setVisibleCount] = useState(6);
 
@@ -318,7 +318,7 @@ export default function Recipes({ pantryIngredients }: RecipesProps) {
         if (!ac.signal.aborted) setLoading(false);
       });
     return () => ac.abort();
-  }, [fetchKey, pantryIngredients]);
+  }, [fetchKey]);
 
   const activeFilterCount = useMemo(() => {
     let n = dietary.size;
