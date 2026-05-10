@@ -248,10 +248,6 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
           >
             {success ? "Added ✓" : "Add to pantry"}
           </button>
-
-          <p className="text-[11px] text-stone-400 text-center mt-1">
-            Receipt scan coming soon.
-          </p>
         </div>
       )}
     </div>
