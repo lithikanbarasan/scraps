@@ -3,6 +3,12 @@ export interface RekognitionIngredientDetection {
   count: number;
 }
 
+export interface RekognitionLabelInput {
+  name: string;
+  instanceCount?: number;
+  confidence?: number;
+}
+
 const EXCLUDED_LABELS = new Set([
   "person",
   "human",
@@ -132,14 +138,20 @@ function normalizeIngredientName(raw: string): string | null {
 }
 
 export function toDetectedIngredients(
-  labels: Array<{ name: string; instanceCount?: number }>
+  labels: RekognitionLabelInput[],
+  options?: { allowUncounted?: boolean; minConfidence?: number }
 ): RekognitionIngredientDetection[] {
+  const allowUncounted = options?.allowUncounted ?? false;
+  const minConfidence = options?.minConfidence ?? 0;
   const counts = new Map<string, number>();
 
   for (const label of labels) {
+    if ((label.confidence ?? 0) < minConfidence) continue;
     const name = normalizeIngredientName(label.name);
     if (!name) continue;
-    const amount = Math.max(1, label.instanceCount ?? 1);
+    const rawCount = label.instanceCount ?? 0;
+    const amount = rawCount > 0 ? rawCount : allowUncounted ? 1 : 0;
+    if (amount <= 0) continue;
     counts.set(name, (counts.get(name) ?? 0) + amount);
   }
 

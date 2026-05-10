@@ -14,6 +14,11 @@ type Body = {
   imageBase64?: string;
 };
 
+type DetectedItem = {
+  name: string;
+  count: number;
+};
+
 const FOOD_PARENT_HINTS = new Set([
   "food and beverage",
   "food",
@@ -47,6 +52,23 @@ function getRekognitionClient() {
       secretAccessKey,
     },
   });
+}
+
+function mergeDetectedItems(
+  primary: DetectedItem[],
+  supplements: DetectedItem[]
+): DetectedItem[] {
+  const byName = new Map<string, number>();
+  for (const item of primary) {
+    byName.set(item.name, Math.max(1, item.count));
+  }
+  for (const item of supplements) {
+    if (byName.has(item.name)) continue;
+    byName.set(item.name, Math.max(1, item.count));
+  }
+  return [...byName.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 export async function POST(req: Request) {
@@ -88,19 +110,37 @@ export async function POST(req: Request) {
       .map((label) => ({
         name: label.Name ?? "",
         instanceCount: label.Instances?.length ?? 0,
+        confidence: label.Confidence ?? 0,
       }));
 
     const base = allLabels.map((label) => ({
       name: label.Name ?? "",
       instanceCount: label.Instances?.length ?? 0,
+      confidence: label.Confidence ?? 0,
     }));
 
-    let ingredients = toDetectedIngredients(foodLikely).slice(0, 12);
-    if (ingredients.length === 0) {
-      ingredients = toDetectedIngredients(base)
-        .filter((item) => isLikelyGroceryLabel(item.name))
-        .slice(0, 12);
-    }
+    // Primary path: use concrete object instances for count accuracy.
+    const instanceBased = toDetectedIngredients(foodLikely, {
+      allowUncounted: false,
+      minConfidence: 45,
+    });
+
+    // Supplement: keep likely produce labels with no instances (e.g. onions) as count=1.
+    const highConfidenceFoodLabels = toDetectedIngredients(foodLikely, {
+      allowUncounted: true,
+      minConfidence: 65,
+    }).filter((item) => isLikelyGroceryLabel(item.name));
+
+    // Global fallback when food-parent hints are sparse.
+    const highConfidenceGlobal = toDetectedIngredients(base, {
+      allowUncounted: true,
+      minConfidence: 75,
+    }).filter((item) => isLikelyGroceryLabel(item.name));
+
+    const ingredients = mergeDetectedItems(
+      mergeDetectedItems(instanceBased, highConfidenceFoodLabels),
+      highConfidenceGlobal
+    ).slice(0, 12);
 
     return NextResponse.json({
       ingredients,
