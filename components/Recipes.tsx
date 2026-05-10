@@ -114,7 +114,7 @@ function RecipeDetailSheet({
               Ingredients
             </h3>
             <ul className="flex flex-col gap-3">
-              {recipe.allIngredients.map((ing) => {
+              {recipe.allIngredients.map((ing, ingIdx) => {
                 const exp = isExpiringIngredient(recipe, ing);
                 const src = findUseSource(recipe, ing);
                 const rk =
@@ -125,7 +125,7 @@ function RecipeDetailSheet({
 
                 return (
                   <li
-                    key={ing}
+                    key={`${recipe.id}-detail-ing-${ingIdx}-${ing}`}
                     className="border border-stone-100 rounded-xl px-3 py-2.5 bg-stone-50/50"
                   >
                     <div className="flex items-start gap-2">
@@ -247,7 +247,8 @@ export default function Recipes({ recipes }: RecipesProps) {
   const [detailRecipe, setDetailRecipe] = useState<Recipe | null>(null);
 
   const [cooked, setCooked] = useState<Set<string>>(new Set());
-  const [favorites, setFavorites] = useState<Set<string>>(new Set(["1"]));
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState("");
 
   const activeFilterCount = useMemo(() => {
     let n = dietary.size;
@@ -328,6 +329,8 @@ export default function Recipes({ recipes }: RecipesProps) {
         <input
           type="text"
           placeholder="Search recipes"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
           className="flex-1 bg-transparent text-[14px] text-stone-800 placeholder-stone-400 focus:outline-none"
         />
       </div>
@@ -624,12 +627,11 @@ export default function Recipes({ recipes }: RecipesProps) {
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 pointer-events-none">
-                    {recipe.allIngredients.map((ing) => {
-                      const isExpiring =
-                        recipe.expiringIngredients.includes(ing);
+                    {recipe.allIngredients.map((ing, ingIdx) => {
+                      const isExpiring = isExpiringIngredient(recipe, ing);
                       return (
                         <span
-                          key={ing}
+                          key={`${recipe.id}-chip-ing-${ingIdx}-${ing}`}
                           className="text-[11px] font-medium px-2.5 py-1 rounded-full border border-stone-200 text-stone-700 inline-flex items-center gap-1.5"
                         >
                           {isExpiring && (
@@ -694,7 +696,9 @@ export default function Recipes({ recipes }: RecipesProps) {
 
       {filtered.length === 0 && (
         <p className="text-[14px] text-stone-500 text-center py-8">
-          No recipes match these filters. Try adjusting or clearing filters.
+          {recipes.length === 0
+            ? "No recipes from TheMealDB matched your pantry yet. Try staples TheMealDB lists often (chicken, tomato, onion, rice)."
+            : "No recipes match these filters. Try adjusting or clearing filters."}
         </p>
       )}
     </div>
