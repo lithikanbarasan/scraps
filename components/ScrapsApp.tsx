@@ -7,7 +7,7 @@ import Social from "./Social";
 import Profile from "./Profile";
 import NotificationsSheet from "./NotificationsSheet";
 import { pressFlat } from "./pressableStyles";
-import { Ingredient } from "./types";
+import { Ingredient, IngredientExchangeRequest } from "./types";
 import { getDaysLeft, getUrgency } from "./ingredientUtils";
 import {
   mockIngredients,
@@ -97,6 +97,9 @@ export default function ScrapsApp() {
   const [ingredients, setIngredients] = useState<Ingredient[]>(mockIngredients);
   const [notifications, setNotifications] = useState(mockProfile.notifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [exchangeRequests, setExchangeRequests] = useState<
+    IngredientExchangeRequest[]
+  >(mockExchangeRequests);
 
   const handleAddIngredient = (newIng: Ingredient) => {
     setIngredients((prev) => {
@@ -247,7 +250,8 @@ export default function ScrapsApp() {
               <Social
                 friendPosts={mockFriendPosts}
                 mySharedIngredients={sharedIngredients}
-                exchangeRequests={mockExchangeRequests}
+                exchangeRequests={exchangeRequests}
+                setExchangeRequests={setExchangeRequests}
               />
             )}
             {activeTab === "profile" && <Profile profile={mockProfile} />}

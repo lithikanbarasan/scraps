@@ -261,7 +261,7 @@ export const mockExchangeRequests: IngredientExchangeRequest[] = [
     ingredientName: "Greek Yogurt",
     ingredientEmoji: "🥛",
     quantity: "2 cups",
-    status: "declined",
+    status: "pending",
   },
 ];
 

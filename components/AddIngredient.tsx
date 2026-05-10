@@ -22,7 +22,7 @@ function getEmoji(name: string): string {
   for (const [key, emoji] of Object.entries(EMOJI_MAP)) {
     if (lower.includes(key)) return emoji;
   }
-  return "🥫";
+  return "🛒";
 }
 
 const urgencyDot: Record<UrgencyLevel, string> = {
