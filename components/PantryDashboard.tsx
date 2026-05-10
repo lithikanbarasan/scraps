@@ -6,6 +6,7 @@ import { pressDark, pressOutline } from "./pressableStyles";
 
 interface PantryDashboardProps {
   ingredients: Ingredient[];
+  userFirstName: string;
   onToggleShare: (id: string) => void;
   onUpdateIngredient: (id: string, updates: Partial<Ingredient>) => void;
   onRemoveIngredient: (id: string) => void;
@@ -25,6 +26,7 @@ const urgencyText: Record<UrgencyLevel, string> = {
 
 export default function PantryDashboard({
   ingredients,
+  userFirstName,
   onToggleShare,
   onUpdateIngredient,
   onRemoveIngredient,
@@ -94,7 +96,7 @@ export default function PantryDashboard({
         <h1 className="font-display text-[34px] leading-[1.1] tracking-[-0.01em] text-stone-900">
           Good morning,
           <br />
-          Sarah.
+          {userFirstName}.
         </h1>
         <p className="text-[13px] text-stone-500 mt-3 leading-relaxed">
           You have{" "}
@@ -103,7 +105,7 @@ export default function PantryDashboard({
         </p>
       </div>
 
-      <div className="border-b border-stone-200 pb-3 flex items-end justify-between">
+      <div className="border-b border-stone-200 pb-3 flex items-end">
         <div className="flex items-baseline gap-5">
           <div>
             <p className="font-display text-[22px] text-stone-900 tabular-nums leading-none">
@@ -123,24 +125,6 @@ export default function PantryDashboard({
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          className={`w-9 h-9 flex items-center justify-center text-stone-500 rounded-full ${pressOutline}`}
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          >
-            <line x1="4" y1="8" x2="20" y2="8" />
-            <line x1="7" y1="12" x2="17" y2="12" />
-            <line x1="10" y1="16" x2="14" y2="16" />
-          </svg>
-        </button>
       </div>
 
       <div className="flex gap-2 -mx-6 px-6 overflow-x-auto scrollbar-none">

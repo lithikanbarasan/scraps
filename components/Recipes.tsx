@@ -330,19 +330,6 @@ export default function Recipes({ recipes }: RecipesProps) {
           placeholder="Search recipes"
           className="flex-1 bg-transparent text-[14px] text-stone-800 placeholder-stone-400 focus:outline-none"
         />
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#0c0a09"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        >
-          <line x1="4" y1="8" x2="20" y2="8" />
-          <line x1="7" y1="12" x2="17" y2="12" />
-          <line x1="10" y1="16" x2="14" y2="16" />
-        </svg>
       </div>
 
       <div className="flex items-center gap-2">

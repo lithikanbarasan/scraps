@@ -1,14 +1,25 @@
 "use client";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import PantryDashboard from "./PantryDashboard";
 import AddIngredient from "./AddIngredient";
 import Recipes from "./Recipes";
 import Social from "./Social";
 import Profile from "./Profile";
 import NotificationsSheet from "./NotificationsSheet";
+import EditProfileSheet from "./EditProfileSheet";
 import { pressFlat } from "./pressableStyles";
 import { Ingredient, IngredientExchangeRequest } from "./types";
 import { getDaysLeft, getUrgency, ingredientMatchKey } from "./ingredientUtils";
+import {
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  DistanceUnit,
+  Ingredient,
+  IngredientExchangeRequest,
+  NotificationPreferences,
+  UserProfile,
+} from "./types";
+import { filterNotificationsByPreferences } from "./notificationsFilter";
+import { getDaysLeft, getUrgency } from "./ingredientUtils";
 import {
   mockIngredients,
   mockRecipes,
@@ -25,7 +36,7 @@ const tabs: { id: Tab; label: string }[] = [
   { id: "recipes", label: "Cook" },
   { id: "add", label: "Add" },
   { id: "social", label: "Friends" },
-  { id: "profile", label: "You" },
+  { id: "profile", label: "Home" },
 ];
 
 // Monoline icons — 1.5 stroke, neutral, consistent geometry
@@ -78,15 +89,10 @@ function TabIcon({ id, active }: { id: Tab; active: boolean }) {
         </svg>
       );
     case "profile":
-      // List / menu (matches image 1 list icon)
+      // Home
       return (
         <svg {...common}>
-          <circle cx="5" cy="7" r="0.6" fill={stroke} />
-          <circle cx="5" cy="12" r="0.6" fill={stroke} />
-          <circle cx="5" cy="17" r="0.6" fill={stroke} />
-          <line x1="9" y1="7" x2="20" y2="7" />
-          <line x1="9" y1="12" x2="20" y2="12" />
-          <line x1="9" y1="17" x2="20" y2="17" />
+          <path d="M4 11 12 5l8 6v9h-5v-6H9v6H4v-9z" />
         </svg>
       );
   }
@@ -95,11 +101,19 @@ function TabIcon({ id, active }: { id: Tab; active: boolean }) {
 export default function ScrapsApp() {
   const [activeTab, setActiveTab] = useState<Tab>("pantry");
   const [ingredients, setIngredients] = useState<Ingredient[]>(mockIngredients);
+  const [profile, setProfile] = useState<UserProfile>(mockProfile);
   const [notifications, setNotifications] = useState(mockProfile.notifications);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [exchangeRequests, setExchangeRequests] = useState<
     IngredientExchangeRequest[]
   >(mockExchangeRequests);
+  const [profileEditOpen, setProfileEditOpen] = useState(false);
+  const [exchangeRequests, setExchangeRequests] = useState<
+    IngredientExchangeRequest[]
+  >(mockExchangeRequests);
+  const [notificationPrefs, setNotificationPrefs] =
+    useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>("mi");
 
   const handleAddIngredient = (newIng: Ingredient) => {
     setIngredients((prev) => {
@@ -172,7 +186,12 @@ export default function ScrapsApp() {
   };
 
   const sharedIngredients = ingredients.filter((i) => i.isShared);
-  const unreadNotifs = notifications.filter((n) => !n.read).length;
+
+  const inboxNotifications = useMemo(
+    () => filterNotificationsByPreferences(notifications, notificationPrefs),
+    [notifications, notificationPrefs]
+  );
+  const unreadNotifs = inboxNotifications.filter((n) => !n.read).length;
   const markAllNotificationsRead = () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
@@ -184,6 +203,25 @@ export default function ScrapsApp() {
   };
 
   const openNotifications = () => setNotificationsOpen(true);
+
+  const profileFirstName =
+    profile.name.trim().split(/\s+/)[0] || profile.name.trim() || "there";
+
+  const saveProfileIdentity = (next: { name: string; initials: string }) => {
+    setProfile((p) => ({ ...p, name: next.name, initials: next.initials }));
+  };
+
+  const handleSignOut = () => {
+    setIngredients(mockIngredients);
+    setProfile(mockProfile);
+    setNotifications(mockProfile.notifications.map((n) => ({ ...n })));
+    setExchangeRequests(mockExchangeRequests.map((r) => ({ ...r })));
+    setNotificationPrefs({ ...DEFAULT_NOTIFICATION_PREFERENCES });
+    setDistanceUnit("mi");
+    setNotificationsOpen(false);
+    setProfileEditOpen(false);
+    setActiveTab("pantry");
+  };
 
   const notifBadge =
     unreadNotifs > 9 ? "9+" : unreadNotifs > 0 ? String(unreadNotifs) : null;
@@ -208,9 +246,16 @@ export default function ScrapsApp() {
           <NotificationsSheet
             open={notificationsOpen}
             onClose={() => setNotificationsOpen(false)}
-            notifications={notifications}
+            notifications={inboxNotifications}
             onMarkAllRead={markAllNotificationsRead}
             onMarkRead={markNotificationRead}
+          />
+          <EditProfileSheet
+            open={profileEditOpen}
+            onClose={() => setProfileEditOpen(false)}
+            name={profile.name}
+            fallbackInitials={profile.initials}
+            onSave={saveProfileIdentity}
           />
           {/* iPhone-style chrome: island + nav row (avatar · centered title · mail) */}
           <header className="shrink-0 bg-white">
@@ -219,12 +264,14 @@ export default function ScrapsApp() {
             </div>
             <div className="flex items-center min-h-[44px] px-4 pb-3 pt-0.5">
               <div className="w-11 shrink-0 flex justify-start items-center">
-                <div
-                  className="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-sm font-medium text-stone-600 border border-stone-200"
-                  aria-hidden
+                <button
+                  type="button"
+                  onClick={() => setProfileEditOpen(true)}
+                  className={`w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-sm font-medium text-stone-600 border border-stone-200 ${pressFlat}`}
+                  aria-label="Edit profile"
                 >
-                  {mockProfile.initials}
-                </div>
+                  {profile.initials}
+                </button>
               </div>
               <h1 className="flex-1 min-w-0 text-center font-display text-[30px] font-semibold tracking-[-0.02em] text-stone-900 leading-snug px-2">
                 Scraps
@@ -268,6 +315,7 @@ export default function ScrapsApp() {
             {activeTab === "pantry" && (
               <PantryDashboard
                 ingredients={ingredients}
+                userFirstName={profileFirstName}
                 onToggleShare={handleToggleShare}
                 onUpdateIngredient={handleUpdateIngredient}
                 onRemoveIngredient={handleRemoveIngredient}
@@ -287,7 +335,17 @@ export default function ScrapsApp() {
                 setExchangeRequests={setExchangeRequests}
               />
             )}
-            {activeTab === "profile" && <Profile profile={mockProfile} />}
+            {activeTab === "profile" && (
+              <Profile
+                profile={profile}
+                notificationPrefs={notificationPrefs}
+                onNotificationPrefsChange={setNotificationPrefs}
+                distanceUnit={distanceUnit}
+                onDistanceUnitChange={setDistanceUnit}
+                onAddFriends={() => setActiveTab("social")}
+                onSignOut={handleSignOut}
+              />
+            )}
           </div>
 
           {/* Bottom nav — flat 5 tabs, monoline icons, hairline top border */}
