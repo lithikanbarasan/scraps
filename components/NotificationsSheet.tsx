@@ -66,15 +66,16 @@ export default function NotificationsSheet({
           </div>
         </div>
         <div className="overflow-y-auto px-6 py-4 pb-8">
+          {notifications.length === 0 ? (
+            <p className="text-[13px] text-stone-500 text-center py-10 px-4 leading-relaxed">
+              No notifications yet. Alerts will show up here once expiry and
+              friend activity notifications are connected.
+            </p>
+          ) : (
+          <>
           <p className="text-[11px] text-stone-400 mb-3">
             Tap a notification or use Mark read to dismiss it from your count.
           </p>
-          {notifications.length === 0 ? (
-            <p className="text-[13px] text-stone-500 text-center py-10 px-4 leading-relaxed">
-              Nothing here, turn categories back on in Settings (Home tab),
-              or you&apos;re all caught up.
-            </p>
-          ) : (
           <div className="flex flex-col">
             {notifications.map((notif, idx) => (
               <div
@@ -119,6 +120,7 @@ export default function NotificationsSheet({
               </div>
             ))}
           </div>
+          </>
           )}
         </div>
       </div>

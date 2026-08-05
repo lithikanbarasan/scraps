@@ -188,47 +188,61 @@ export default function Social({
 
       {tab === "available" ? (
         <div className="flex flex-col gap-1">
-          {urgentPosts.length > 0 && (
+          {availablePosts.length === 0 ? (
+            <div className="flex flex-col items-center py-16 gap-3 text-stone-400">
+              <p className="text-[13px] font-medium text-stone-600">
+                No friend listings yet
+              </p>
+              <p className="text-[11px] text-center px-8 leading-relaxed">
+                Community pantry sharing isn’t connected yet. When friends share
+                surplus or expiring items, they’ll show up here.
+              </p>
+            </div>
+          ) : (
             <>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-medium">
-                  Expiring soon
-                </h2>
-              </div>
-              <div className="flex flex-col gap-3 mb-4">
-                {urgentPosts.map((post, i) => (
-                  <FriendPostCard
-                    key={post.id}
-                    post={post}
-                    avatarColor={avatarTints[i % avatarTints.length]}
-                    onToggleRequest={toggleRequest}
-                  />
-                ))}
-              </div>
-            </>
-          )}
+              {urgentPosts.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                    <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-medium">
+                      Expiring soon
+                    </h2>
+                  </div>
+                  <div className="flex flex-col gap-3 mb-4">
+                    {urgentPosts.map((post, i) => (
+                      <FriendPostCard
+                        key={post.id}
+                        post={post}
+                        avatarColor={avatarTints[i % avatarTints.length]}
+                        onToggleRequest={toggleRequest}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
 
-          {otherPosts.length > 0 && (
-            <>
-              <div className="flex items-center gap-2 mb-3 mt-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
-                <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-medium">
-                  Surplus available
-                </h2>
-              </div>
-              <div className="flex flex-col gap-3">
-                {otherPosts.map((post, i) => (
-                  <FriendPostCard
-                    key={post.id}
-                    post={post}
-                    avatarColor={
-                      avatarTints[(i + urgentPosts.length) % avatarTints.length]
-                    }
-                    onToggleRequest={toggleRequest}
-                  />
-                ))}
-              </div>
+              {otherPosts.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 mb-3 mt-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
+                    <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-medium">
+                      Surplus available
+                    </h2>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    {otherPosts.map((post, i) => (
+                      <FriendPostCard
+                        key={post.id}
+                        post={post}
+                        avatarColor={
+                          avatarTints[(i + urgentPosts.length) % avatarTints.length]
+                        }
+                        onToggleRequest={toggleRequest}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
@@ -335,9 +349,15 @@ export default function Social({
           )}
 
           {outgoing.length === 0 && incoming.length === 0 && (
-            <p className="text-[13px] text-stone-500 text-center py-12">
-              No requests yet.
-            </p>
+            <div className="flex flex-col items-center py-12 gap-2 text-stone-400">
+              <p className="text-[13px] font-medium text-stone-600">
+                No requests yet
+              </p>
+              <p className="text-[11px] text-center px-8 leading-relaxed">
+                Ingredient requests will appear here once sharing and friendships
+                are connected.
+              </p>
+            </div>
           )}
         </div>
       )}

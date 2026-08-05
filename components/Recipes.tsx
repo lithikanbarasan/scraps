@@ -3,14 +3,12 @@ import React, { useEffect, useMemo, useState } from "react";
 import type {
   CuisineTag,
   DietaryTag,
-  FriendPost,
   Ingredient,
   IngredientMatchKind,
   Recipe,
 } from "./types";
 import { pressDark, pressOutline } from "./pressableStyles";
 import { findUseSource, isExpiringIngredient } from "./recipeIngredientMeta";
-import { mockFriendPosts } from "./mockData";
 
 interface RecipesProps {
   pantryIngredients: Ingredient[];
@@ -282,41 +280,6 @@ function missingItemsCount(match: IngredientMatchKind): number {
   return 4;
 }
 
-function matchesIngredientLabel(a: string, b: string): boolean {
-  const left = a.toLowerCase().trim();
-  const right = b.toLowerCase().trim();
-  if (!left || !right) return false;
-  return (
-    left.includes(right) ||
-    right.includes(left) ||
-    left.split(/\s+/).some((w) => w.length > 2 && right.includes(w))
-  );
-}
-
-function attachFriendSources(recipes: Recipe[], posts: FriendPost[]): Recipe[] {
-  return recipes.map((recipe) => {
-    const uses = [...(recipe.usesSources ?? [])];
-    for (const post of posts) {
-      if (post.daysLeft > 2) continue;
-      const hit = recipe.allIngredients.find((line) =>
-        matchesIngredientLabel(line, post.ingredientName)
-      );
-      if (!hit) continue;
-      const alreadyHas = uses.some(
-        (u) => u.source === "friend" && matchesIngredientLabel(u.ingredientLabel, hit)
-      );
-      if (!alreadyHas) {
-        uses.push({
-          ingredientLabel: hit,
-          source: "friend",
-          friendName: post.friendName.split(" ")[0],
-        });
-      }
-    }
-    return uses.length > 0 ? { ...recipe, usesSources: uses } : recipe;
-  });
-}
-
 export default function Recipes({
   pantryIngredients = [],
   onMealsCookedChange,
@@ -360,7 +323,7 @@ export default function Recipes({
         if (!res.ok) {
           throw new Error(data.error ?? "Could not load recipes");
         }
-        setRecipes(attachFriendSources(data.recipes ?? [], mockFriendPosts));
+        setRecipes(data.recipes ?? []);
       })
       .catch((e: Error) => {
         if (e.name === "AbortError") return;

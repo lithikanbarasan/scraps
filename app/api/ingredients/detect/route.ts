@@ -113,38 +113,6 @@ export async function POST(req: Request) {
     const response = await client.send(command);
     const customConfig = getCustomModelConfig();
 
-    if (customConfig) {
-      const customResponse = await client.send(
-        new DetectCustomLabelsCommand({
-          ProjectVersionArn: customConfig.projectVersionArn,
-          Image: { Bytes: Buffer.from(imageBase64, "base64") },
-          MinConfidence: customConfig.minConfidence,
-        })
-      );
-
-      const customIngredients = toDetectedIngredients(
-        (customResponse.CustomLabels ?? []).map((label) => ({
-          // Class names should come from your trained dataset labels.
-          name: label.Name ?? "",
-          // One bounding box per detected item enables per-item counting.
-          instanceCount: label.Geometry?.BoundingBox ? 1 : 0,
-          confidence: label.Confidence ?? 0,
-        })),
-        {
-          allowUncounted: false,
-          minConfidence: customConfig.minConfidence,
-        }
-      ).slice(0, 20);
-
-      if (customIngredients.length > 0) {
-        return NextResponse.json({
-          ingredients: customIngredients,
-          labels: customIngredients.map((item) => item.name),
-          detector: "rekognition-custom-labels",
-        });
-      }
-    }
-
     const allLabels = response.Labels ?? [];
     const foodLikely = allLabels
       .filter((label) => {

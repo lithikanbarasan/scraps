@@ -7,9 +7,13 @@ import { pressDark, pressOutline } from "./pressableStyles";
 interface PantryDashboardProps {
   ingredients: Ingredient[];
   userFirstName: string;
+  loading: boolean;
+  error: string | null;
+  saving: boolean;
+  onRetry: () => void;
   onToggleShare: (id: string) => void;
-  onUpdateIngredient: (id: string, updates: Partial<Ingredient>) => void;
-  onRemoveIngredient: (id: string) => void;
+  onUpdateIngredient: (id: string, updates: Partial<Ingredient>) => Promise<boolean>;
+  onRemoveIngredient: (id: string) => Promise<boolean>;
 }
 
 const urgencyDot: Record<UrgencyLevel, string> = {
@@ -27,6 +31,10 @@ const urgencyText: Record<UrgencyLevel, string> = {
 export default function PantryDashboard({
   ingredients,
   userFirstName,
+  loading,
+  error,
+  saving,
+  onRetry,
   onToggleShare,
   onUpdateIngredient,
   onRemoveIngredient,
@@ -69,22 +77,22 @@ export default function PantryDashboard({
     return () => window.removeEventListener("keydown", onKey);
   }, [detailId]);
 
-  const saveDetail = () => {
+  const saveDetail = async () => {
     if (!detailId) return;
     const cost = parseFloat(draftCost);
-    onUpdateIngredient(detailId, {
+    const saved = await onUpdateIngredient(detailId, {
       expiryDate: draftExpiry,
       estimatedValue: Number.isFinite(cost) ? cost : 0,
     });
-    setDetailId(null);
+    if (saved) setDetailId(null);
   };
 
-  const adjustCount = (id: string, delta: number) => {
+  const adjustCount = async (id: string, delta: number) => {
     const ing = ingredients.find((i) => i.id === id);
     if (!ing) return;
     const next = ing.count + delta;
-    onUpdateIngredient(id, { count: next });
-    if (next <= 0) setDetailId(null);
+    const saved = await onUpdateIngredient(id, { count: next });
+    if (saved && next <= 0) setDetailId(null);
   };
 
   const inputClass =
@@ -174,7 +182,24 @@ export default function PantryDashboard({
       </div>
 
       <div className="flex flex-col">
-        {filtered.map((ing, idx) => (
+        {loading ? (
+          <p className="py-8 text-center text-[13px] text-stone-500">Loading your pantry…</p>
+        ) : error ? (
+          <div className="py-8 text-center">
+            <p className="text-[13px] text-red-600" role="alert">{error}</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className={`mt-3 rounded-full border border-stone-300 px-4 py-2 text-[12px] text-stone-700 ${pressOutline}`}
+            >
+              Try again
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
+          <p className="py-8 text-center text-[13px] text-stone-500">
+            Your pantry is empty. Add your first item to get started.
+          </p>
+        ) : filtered.map((ing, idx) => (
           <div
             key={ing.id}
             role="button"
@@ -344,9 +369,10 @@ export default function PantryDashboard({
               <button
                 type="button"
                 onClick={saveDetail}
+                disabled={saving}
                 className={`w-full bg-stone-900 text-white font-medium py-3.5 rounded-full text-[13px] tracking-wide mt-2 ${pressDark}`}
               >
-                Save changes
+                {saving ? "Saving…" : "Save changes"}
               </button>
               <button
                 type="button"
@@ -357,10 +383,12 @@ export default function PantryDashboard({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  onRemoveIngredient(detail.id);
-                  setDetailId(null);
+                  onClick={() => {
+                  void onRemoveIngredient(detail.id).then((deleted) => {
+                    if (deleted) setDetailId(null);
+                  });
                 }}
+                disabled={saving}
                 className={`w-full py-3 rounded-full text-[13px] font-medium border border-red-200 text-red-700 bg-red-50/80 ${pressOutline}`}
               >
                 Remove from pantry

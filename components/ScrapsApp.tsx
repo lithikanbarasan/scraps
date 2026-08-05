@@ -1,5 +1,6 @@
 "use client";
 import React, { useMemo, useState, useEffect } from "react";
+import type { Session } from "@supabase/supabase-js";
 import PantryDashboard from "./PantryDashboard";
 import AddIngredient from "./AddIngredient";
 import Recipes from "./Recipes";
@@ -7,28 +8,28 @@ import Social from "./Social";
 import Profile from "./Profile";
 import NotificationsSheet from "./NotificationsSheet";
 import EditProfileSheet from "./EditProfileSheet";
+import AuthScreen from "./AuthScreen";
+import CompleteProfileScreen from "./CompleteProfileScreen";
 import { pressFlat } from "./pressableStyles";
 import {
-  DEFAULT_NOTIFICATION_PREFERENCES,
-  DistanceUnit,
   Ingredient,
   IngredientExchangeRequest,
-  NotificationPreferences,
+  Notification,
   UserProfile,
-  Recipe,
 } from "./types";
-import { filterNotificationsByPreferences } from "./notificationsFilter";
 import { getDaysLeft, getUrgency } from "./ingredientUtils";
-import {
-  mockIngredients,
-  mockFriendPosts,
-  mockExchangeRequests,
-  mockProfile,
-} from "./mockData";
+import { initialsFromFullName } from "./profileInitials";
 
 import { createClient } from "../lib/supabase/client";
+import {
+  ingredientToPantryInsert,
+  ingredientToPantryUpdate,
+  pantryRowToIngredient,
+} from "../lib/pantryItems";
+import type { Database } from "../lib/supabase/database.types";
 
 type Tab = "pantry" | "add" | "recipes" | "social" | "profile";
+type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 
 /* Cook (chef hat) and Add (+) are swapped vs. the original order */
 const tabs: { id: Tab; label: string }[] = [
@@ -38,6 +39,25 @@ const tabs: { id: Tab; label: string }[] = [
   { id: "social", label: "Friends" },
   { id: "profile", label: "Home" },
 ];
+
+function profileHasRealName(row: ProfileRow | null): boolean {
+  return Boolean(row?.first_name?.trim() && row?.last_name?.trim());
+}
+
+function toUserProfile(row: ProfileRow, email: string): UserProfile {
+  const firstName = row.first_name!.trim();
+  const lastName = row.last_name!.trim();
+  return {
+    firstName,
+    lastName,
+    initials: initialsFromFullName(`${firstName} ${lastName}`),
+    email,
+    savedThisMonth: 0,
+    ingredientsRescued: 0,
+    co2Saved: 0,
+    mealsCooked: 0,
+  };
+}
 
 // Monoline icons: 1.5 stroke, neutral, consistent geometry
 function TabIcon({ id, active }: { id: Tab; active: boolean }) {
@@ -103,147 +123,135 @@ function TabIcon({ id, active }: { id: Tab; active: boolean }) {
 export default function ScrapsApp() {
   const supabase = useMemo(() => createClient(), []);
 
+  const [session, setSession] = useState<Session | null>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("pantry");
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [loadingPantry, setLoadingPantry] = useState(true);
-  const [profile, setProfile] = useState<UserProfile>(mockProfile);
-  const [notifications, setNotifications] = useState(mockProfile.notifications);
+  const [pantryError, setPantryError] = useState<string | null>(null);
+  const [savingPantry, setSavingPantry] = useState(false);
+  const [pantryReloadKey, setPantryReloadKey] = useState(0);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
-  const [exchangeRequests, setExchangeRequests] = useState<IngredientExchangeRequest[]>(mockExchangeRequests);
-  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
-  const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>("mi");
+  const [notifications] = useState<Notification[]>([]);
+  const [exchangeRequests, setExchangeRequests] = useState<
+    IngredientExchangeRequest[]
+  >([]);
 
-  // Load pantry from Supabase on mount
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      if (!mounted) return;
+      setSession(currentSession);
+      setLoadingAuth(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setLoadingAuth(false);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  useEffect(() => {
+    async function loadProfile() {
+      if (!session) {
+        setProfile(null);
+        setLoadingProfile(false);
+        setProfileError(null);
+        return;
+      }
+      setLoadingProfile(true);
+      setProfileError(null);
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", session.user.id)
+        .maybeSingle();
+      if (error) {
+        console.error("Failed to load profile:", error);
+        setProfileError("We couldn’t load your profile. Please refresh and try again.");
+        setProfile(null);
+      } else {
+        setProfile(data);
+      }
+      setLoadingProfile(false);
+    }
+
+    void loadProfile();
+  }, [session, supabase]);
+
+  // RLS scopes this query to the authenticated user's user_id.
   useEffect(() => {
     async function loadPantry() {
-      const { data, error } = await supabase
-        .from("pantry_items")
-        .select("*")
-        .order("days_left", { ascending: true });
-
-      if (error) {
-        console.error("Failed to load pantry:", error);
+      if (!session) {
+        setIngredients([]);
         setLoadingPantry(false);
         return;
       }
 
-      // Map snake_case DB columns to your camelCase Ingredient type
-      const mapped: Ingredient[] = (data ?? []).map((row) => ({
-        id: row.id,
-        name: row.name,
-        quantity: row.quantity ?? "",
-        count: row.count,
-        unit: row.unit,
-        expiryDate: row.expiry_date,
-        daysLeft: row.days_left,
-        urgency: row.urgency,
-        estimatedValue: Number(row.estimated_value),
-        emoji: row.emoji,
-        isShared: row.is_shared,
-        autoShared: row.auto_shared,
-      }));
+      setLoadingPantry(true);
+      setPantryError(null);
+      const { data, error } = await supabase
+        .from("pantry_items")
+        .select("*")
+        .order("expires_on", { ascending: true });
 
-      setIngredients(mapped);
+      if (error) {
+        console.error("Failed to load pantry:", error);
+        setPantryError("We couldn’t load your pantry. Please try refreshing.");
+        setLoadingPantry(false);
+        return;
+      }
+
+      setIngredients((data ?? []).map(pantryRowToIngredient));
       setLoadingPantry(false);
     }
 
     loadPantry();
-  }, [supabase]);
+  }, [pantryReloadKey, session, supabase]);
 
-
-
-
-  const ingredientMatchKey = (
-    name: string,
-    expiryDate?: string
-  ) => {
-    return `${name.toLowerCase()}-${expiryDate ?? "none"}`;
-  };
-    
   const handleAddIngredient = async (newIng: Ingredient) => {
-    const key = ingredientMatchKey(newIng.name, newIng.expiryDate);
-    const existingMatch = ingredients.find(
-      (x) => ingredientMatchKey(x.name, x.expiryDate) === key
-    );
-  
-    if (existingMatch) {
-      // MERGE case: bump count + value on the existing row
-      const merged: Ingredient = {
-        ...existingMatch,
-        count: existingMatch.count + newIng.count,
-        estimatedValue: existingMatch.estimatedValue + newIng.estimatedValue,
-        isShared: existingMatch.isShared || newIng.isShared,
-        autoShared: existingMatch.autoShared || newIng.autoShared,
-      };
-  
-      // Optimistic UI update
-      setIngredients((prev) => {
-        const next = prev.map((x) => (x.id === existingMatch.id ? merged : x));
-        return next.sort((a, b) => a.daysLeft - b.daysLeft);
-      });
-  
-      // Persist to Supabase
-      const { error } = await supabase
-        .from("pantry_items")
-        .update({
-          count: merged.count,
-          estimated_value: merged.estimatedValue,
-          is_shared: merged.isShared,
-          auto_shared: merged.autoShared,
-        })
-        .eq("id", existingMatch.id);
-  
-      if (error) {
-        console.error("Failed to merge ingredient:", error);
-      }
-    } else {
-      // INSERT case: brand new ingredient
-      setIngredients((prev) => {
-        const updated = [newIng, ...prev];
-        return updated.sort((a, b) => a.daysLeft - b.daysLeft);
-      });
-  
-      const { error } = await supabase.from("pantry_items").insert({
-        id: newIng.id,
-        name: newIng.name,
-        quantity: newIng.quantity,
-        unit: newIng.unit,
-        count: newIng.count,
-        expiry_date: newIng.expiryDate,
-        days_left: newIng.daysLeft,
-        urgency: newIng.urgency,
-        estimated_value: newIng.estimatedValue,
-        emoji: newIng.emoji,
-        is_shared: newIng.isShared,
-        auto_shared: newIng.autoShared,
-      });
-  
-      if (error) {
-        console.error("Failed to save ingredient:", error);
-        // Roll back if the DB rejected it
-        setIngredients((prev) => prev.filter((i) => i.id !== newIng.id));
-      }
+    setSavingPantry(true);
+    setPantryError(null);
+    const { data, error } = await supabase
+      .from("pantry_items")
+      .insert(ingredientToPantryInsert(newIng))
+      .select()
+      .single();
+    setSavingPantry(false);
+
+    if (error || !data) {
+      console.error("Failed to save ingredient:", error);
+      setPantryError("We couldn’t save that pantry item. Please try again.");
+      throw error ?? new Error("Pantry item was not returned after saving.");
     }
-  
+
+    setIngredients((prev) =>
+      [...prev, pantryRowToIngredient(data)].sort((a, b) => a.daysLeft - b.daysLeft)
+    );
     setTimeout(() => setActiveTab("pantry"), 1200);
   };
 
-  const handleRemoveIngredient = (id: string) => {
+  const handleRemoveIngredient = async (id: string) => {
+    setSavingPantry(true);
+    setPantryError(null);
+    const { error } = await supabase.from("pantry_items").delete().eq("id", id);
+    setSavingPantry(false);
+    if (error) {
+      console.error("Failed to delete ingredient:", error);
+      setPantryError("We couldn’t remove that pantry item. Please try again.");
+      return false;
+    }
     setIngredients((prev) => prev.filter((ing) => ing.id !== id));
-  };
-
-  const ingredientLineMatchesPantry = (pantryName: string, recipeLine: string) => {
-    const p = pantryName.toLowerCase().trim();
-    const r = recipeLine.toLowerCase().trim();
-    if (!p || !r) return false;
-    if (r === p) return true;
-    if (r.includes(p) || p.includes(r)) return true;
-    const pWords = p.split(/\s+/).filter((w) => w.length > 2);
-    const rWords = r.split(/\s+/).filter((w) => w.length > 2);
-    return pWords.some((pw) =>
-      rWords.some((rw) => rw.includes(pw) || pw.includes(rw))
-    );
+    return true;
   };
 
   const handleToggleShare = (id: string) => {
@@ -254,156 +262,140 @@ export default function ScrapsApp() {
     );
   };
 
-  const handleUpdateIngredient = (
+  const handleUpdateIngredient = async (
     id: string,
     updates: Partial<Ingredient>
   ) => {
-    setIngredients((prev) => {
-      if (updates.count !== undefined && updates.count <= 0) {
-        return prev.filter((ing) => ing.id !== id);
-      }
-      const next = prev.map((ing) => {
-        if (ing.id !== id) return ing;
-        const merged = { ...ing, ...updates };
-        if (updates.count !== undefined) {
-          const oldC = ing.count;
-          const newC = updates.count;
-          if (oldC > 0 && newC > 0 && oldC !== newC) {
-            merged.estimatedValue = ing.estimatedValue * (newC / oldC);
-          }
-          merged.count = newC;
-        }
-        if (updates.expiryDate !== undefined) {
-          const days = getDaysLeft(updates.expiryDate);
-          merged.daysLeft = days;
-          merged.urgency = getUrgency(days);
-        }
-        if (updates.estimatedValue !== undefined && updates.count === undefined) {
-          merged.estimatedValue = updates.estimatedValue;
-        }
-        return merged;
-      });
-      return next.sort((a, b) => a.daysLeft - b.daysLeft);
-    });
-  };
+    const current = ingredients.find((ingredient) => ingredient.id === id);
+    if (!current) return false;
+    if (updates.count !== undefined && updates.count <= 0) return handleRemoveIngredient(id);
 
-  const sharedIngredients = ingredients.filter((i) => i.isShared);
+    const next = { ...current, ...updates };
+    if (updates.count !== undefined && current.count !== updates.count) {
+      next.estimatedValue = current.count > 0
+        ? current.estimatedValue * (updates.count / current.count)
+        : current.estimatedValue;
+    }
+    if (updates.expiryDate !== undefined) {
+      next.daysLeft = getDaysLeft(updates.expiryDate);
+      next.urgency = getUrgency(next.daysLeft);
+    }
 
-  const inboxNotifications = useMemo(
-    () => filterNotificationsByPreferences(notifications, notificationPrefs),
-    [notifications, notificationPrefs]
-  );
-  const unreadNotifs = inboxNotifications.filter((n) => !n.read).length;
-  const markAllNotificationsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  };
+    setSavingPantry(true);
+    setPantryError(null);
+    const { data, error } = await supabase
+      .from("pantry_items")
+      .update(ingredientToPantryUpdate(next))
+      .eq("id", id)
+      .select()
+      .single();
+    setSavingPantry(false);
+    if (error || !data) {
+      console.error("Failed to update ingredient:", error);
+      setPantryError("We couldn’t update that pantry item. Please try again.");
+      return false;
+    }
 
-  const markNotificationRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    const saved = pantryRowToIngredient(data);
+    setIngredients((prev) =>
+      prev.map((ingredient) => ingredient.id === id ? saved : ingredient)
+        .sort((a, b) => a.daysLeft - b.daysLeft)
     );
+    return true;
   };
 
   const openNotifications = () => setNotificationsOpen(true);
 
-  const profileFirstName =
-    profile.name.trim().split(/\s+/)[0] || profile.name.trim() || "there";
-
-  const saveProfileIdentity = (next: { name: string; initials: string }) => {
-    setProfile((p) => ({ ...p, name: next.name, initials: next.initials }));
-  };
-
-  const handleMealsCookedChange = (delta: number) => {
-    setProfile((prev) => ({
-      ...prev,
-      mealsCooked: Math.max(0, prev.mealsCooked + delta),
-    }));
-  };
-
-  const handleRecipeCookToggle = (recipe: Recipe, nowCooked: boolean) => {
-    if (!nowCooked) return;
-    let recoveredValue = 0;
-
-    setIngredients((prev) => {
-      const next: Ingredient[] = [];
-      const remainingLines = [...recipe.allIngredients];
-
-      for (const ing of prev) {
-        const lineIdx = remainingLines.findIndex((line) =>
-          ingredientLineMatchesPantry(ing.name, line)
-        );
-        if (lineIdx < 0) {
-          next.push(ing);
-          continue;
-        }
-
-        remainingLines.splice(lineIdx, 1);
-        const unitValue = ing.count > 0 ? ing.estimatedValue / ing.count : 0;
-        const newCount = ing.count - 1;
-        recoveredValue += unitValue;
-
-        if (newCount > 0) {
-          next.push({
-            ...ing,
-            count: newCount,
-            estimatedValue: Math.max(0, ing.estimatedValue - unitValue),
-          });
-        }
-      }
-
-      return next.sort((a, b) => a.daysLeft - b.daysLeft);
-    });
-
-    if (recoveredValue > 0) {
-      setProfile((prev) => ({
-        ...prev,
-        savedThisMonth: Number((prev.savedThisMonth + recoveredValue).toFixed(2)),
-      }));
+  const saveProfileNames = async (next: { firstName: string; lastName: string }) => {
+    if (!session) return false;
+    const firstName = next.firstName.trim();
+    const lastName = next.lastName.trim();
+    if (!firstName || !lastName) return false;
+  
+    const { data, error } = await supabase
+      .from("profiles")
+      .update({
+        first_name: firstName,
+        last_name: lastName,
+      })
+      .eq("id", session.user.id)
+      .select()
+      .single();
+  
+    if (error || !data) {
+      console.error("Failed to save profile:", error);
+      return false;
     }
+    setProfile(data);
+    return true;
   };
 
-  const handleRecipeRequestIngredient = (
-    friendName: string,
-    ingredientLabel: string
-  ) => {
-    const requestId = `outgoing-recipe-${friendName}-${ingredientLabel}`.toLowerCase();
-    setExchangeRequests((prev) => {
-      if (prev.some((r) => r.id === requestId)) return prev;
-      return [
-        ...prev,
-        {
-          id: requestId,
-          direction: "outgoing",
-          counterpartyName: friendName,
-          counterpartyInitials: friendName
-            .split(/\s+/)
-            .map((p) => p[0] ?? "")
-            .join("")
-            .slice(0, 2)
-            .toUpperCase(),
-          ingredientName: ingredientLabel,
-          ingredientEmoji: "🥬",
-          quantity: "1 count",
-          status: "pending",
-        },
-      ];
-    });
-  };
-
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      setPantryError("We couldn’t sign you out. Please try again.");
+      return;
+    }
     setIngredients([]);
-    setProfile(mockProfile);
-    setNotifications(mockProfile.notifications.map((n) => ({ ...n })));
-    setExchangeRequests(mockExchangeRequests.map((r) => ({ ...r })));
-    setNotificationPrefs({ ...DEFAULT_NOTIFICATION_PREFERENCES });
-    setDistanceUnit("mi");
+    setProfile(null);
+    setExchangeRequests([]);
     setNotificationsOpen(false);
     setProfileEditOpen(false);
     setActiveTab("pantry");
   };
 
-  const notifBadge =
-    unreadNotifs > 9 ? "9+" : unreadNotifs > 0 ? String(unreadNotifs) : null;
+  if (loadingAuth) {
+    return (
+      <main className="min-h-screen bg-stone-200 flex items-center justify-center font-sans">
+        <p className="text-[13px] text-stone-600">Loading Scraps…</p>
+      </main>
+    );
+  }
+
+  if (!session) {
+    return <AuthScreen supabase={supabase} />;
+  }
+
+  if (loadingProfile) {
+    return (
+      <main className="min-h-screen bg-stone-200 flex items-center justify-center font-sans">
+        <p className="text-[13px] text-stone-600">Loading your profile…</p>
+      </main>
+    );
+  }
+
+  if (profileError) {
+    return (
+      <main className="min-h-screen bg-stone-200 flex items-center justify-center p-4 font-sans">
+        <div className="w-full max-w-sm rounded-[28px] bg-white border border-stone-300 shadow-2xl p-7 text-center">
+          <p className="text-[13px] text-red-600" role="alert">{profileError}</p>
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            className={`mt-5 text-[13px] text-stone-600 ${pressFlat}`}
+          >
+            Sign out
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  if (!profileHasRealName(profile)) {
+    return (
+      <CompleteProfileScreen
+        email={session.user.email ?? ""}
+        onSave={(firstName, lastName) =>
+          saveProfileNames({ firstName, lastName })
+        }
+      />
+    );
+  }
+
+  const userProfile = toUserProfile(profile!, session.user.email ?? "");
+  const sharedIngredients = ingredients.filter((i) => i.isShared);
+  const unreadNotifs = notifications.filter((n) => !n.read).length;
+  const notifBadge = unreadNotifs > 0 ? (unreadNotifs > 9 ? "9+" : String(unreadNotifs)) : null;
 
   return (
     <>
@@ -425,16 +417,21 @@ export default function ScrapsApp() {
           <NotificationsSheet
             open={notificationsOpen}
             onClose={() => setNotificationsOpen(false)}
-            notifications={inboxNotifications}
-            onMarkAllRead={markAllNotificationsRead}
-            onMarkRead={markNotificationRead}
+            notifications={notifications}
+            onMarkAllRead={() => {}}
+            onMarkRead={() => {}}
           />
           <EditProfileSheet
+            key={
+              profileEditOpen
+                ? `open-${userProfile.firstName}-${userProfile.lastName}`
+                : "closed"
+            }
             open={profileEditOpen}
             onClose={() => setProfileEditOpen(false)}
-            name={profile.name}
-            fallbackInitials={profile.initials}
-            onSave={saveProfileIdentity}
+            firstName={userProfile.firstName}
+            lastName={userProfile.lastName}
+            onSave={saveProfileNames}
           />
           {/* iPhone-style chrome: island + nav row (avatar · centered title · mail) */}
           <header className="shrink-0 bg-white">
@@ -449,7 +446,7 @@ export default function ScrapsApp() {
                   className={`w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-sm font-medium text-stone-600 border border-stone-200 ${pressFlat}`}
                   aria-label="Edit profile"
                 >
-                  {profile.initials}
+                  {userProfile.initials}
                 </button>
               </div>
               <h1 className="flex-1 min-w-0 text-center font-display text-[30px] font-semibold tracking-[-0.02em] text-stone-900 leading-snug px-2">
@@ -494,7 +491,11 @@ export default function ScrapsApp() {
             {activeTab === "pantry" && (
               <PantryDashboard
                 ingredients={ingredients}
-                userFirstName={profileFirstName}
+                userFirstName={userProfile.firstName}
+                loading={loadingPantry}
+                error={pantryError}
+                saving={savingPantry}
+                onRetry={() => setPantryReloadKey((current) => current + 1)}
                 onToggleShare={handleToggleShare}
                 onUpdateIngredient={handleUpdateIngredient}
                 onRemoveIngredient={handleRemoveIngredient}
@@ -504,16 +505,11 @@ export default function ScrapsApp() {
               <AddIngredient onAdd={handleAddIngredient} />
             )}
             <div className={activeTab === "recipes" ? "block" : "hidden"}>
-              <Recipes
-                pantryIngredients={ingredients}
-                onMealsCookedChange={handleMealsCookedChange}
-                onRecipeCookToggle={handleRecipeCookToggle}
-                onRequestIngredient={handleRecipeRequestIngredient}
-              />
+              <Recipes pantryIngredients={ingredients} />
             </div>
             {activeTab === "social" && (
               <Social
-                friendPosts={mockFriendPosts}
+                friendPosts={[]}
                 mySharedIngredients={sharedIngredients}
                 exchangeRequests={exchangeRequests}
                 setExchangeRequests={setExchangeRequests}
@@ -521,12 +517,8 @@ export default function ScrapsApp() {
             )}
             {activeTab === "profile" && (
               <Profile
-                profile={profile}
-                notificationPrefs={notificationPrefs}
-                onNotificationPrefsChange={setNotificationPrefs}
-                distanceUnit={distanceUnit}
-                onDistanceUnitChange={setDistanceUnit}
-                onAddFriends={() => setActiveTab("social")}
+                profile={userProfile}
+                onEditProfile={() => setProfileEditOpen(true)}
                 onSignOut={handleSignOut}
               />
             )}

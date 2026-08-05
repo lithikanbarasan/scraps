@@ -9,7 +9,7 @@ import {
 } from "./fetchDetectedIngredients";
 
 interface AddIngredientProps {
-  onAdd: (ingredient: Ingredient, options?: { stayOnAddTab?: boolean }) => void;
+  onAdd: (ingredient: Ingredient, options?: { stayOnAddTab?: boolean }) => Promise<void>;
 }
 
 interface ReviewIngredient {
@@ -61,6 +61,8 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
   const [detectedNames, setDetectedNames] = useState<string[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewItems, setReviewItems] = useState<ReviewIngredient[]>([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const estimateShelfLifeDays = (ingredientName: string): number => {
     const lower = ingredientName.toLowerCase();
@@ -96,7 +98,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
     });
   };
 
-  const addDetectedIngredient = (ingredientName: string, amount: number) => {
+  const addDetectedIngredient = async (ingredientName: string, amount: number) => {
     const expiry = new Date();
     expiry.setDate(expiry.getDate() + estimateShelfLifeDays(ingredientName));
     const expiryIso = expiry.toISOString().split("T")[0];
@@ -119,7 +121,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
       autoShared: urgency === "red",
     };
 
-    onAdd(newIngredient, { stayOnAddTab: true });
+    await onAdd(newIngredient, { stayOnAddTab: true });
   };
 
   const addBlankReviewItem = () => {
@@ -129,7 +131,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
     ]);
   };
 
-  const applyReviewedItems = () => {
+  const applyReviewedItems = async () => {
     const cleaned = reviewItems
       .map((item) => ({
         name: item.name.trim(),
@@ -142,16 +144,26 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
       return;
     }
 
-    cleaned.forEach((item) => addDetectedIngredient(item.name, item.count));
-    setDetectedNames(
-      cleaned.map((item) => `${item.count} ${item.name}${item.count > 1 ? "s" : ""}`)
-    );
-    setReviewOpen(false);
-    setSuccess(true);
-    setTimeout(() => setSuccess(false), 2000);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      for (const item of cleaned) {
+        await addDetectedIngredient(item.name, item.count);
+      }
+      setDetectedNames(
+        cleaned.map((item) => `${item.count} ${item.name}${item.count > 1 ? "s" : ""}`)
+      );
+      setReviewOpen(false);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 2000);
+    } catch {
+      setSaveError("We couldn’t save the scanned items. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!name || !expiryDate) return;
     const days = getDaysLeft(expiryDate);
     const urgency = getUrgency(days);
@@ -171,10 +183,18 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
       isShared: urgency === "red",
       autoShared: urgency === "red",
     };
-    onAdd(newIngredient);
-    setName(""); setQuantity(""); setExpiryDate(""); setEstimatedValue("");
-    setSuccess(true);
-    setTimeout(() => setSuccess(false), 2000);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await onAdd(newIngredient);
+      setName(""); setQuantity(""); setExpiryDate(""); setEstimatedValue("");
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 2000);
+    } catch {
+      setSaveError("We couldn’t save that pantry item. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleScanUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -299,9 +319,10 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
               <button
                 type="button"
                 onClick={applyReviewedItems}
+                disabled={saving}
                 className={`w-full py-3 rounded-full text-[13px] font-medium bg-stone-900 text-white ${pressDark}`}
               >
-                Add reviewed items
+                {saving ? "Saving…" : "Add reviewed items"}
               </button>
             </div>
           </div>
@@ -393,6 +414,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
         </div>
       ) : (
         <div className="flex flex-col gap-5">
+          {saveError && <p className="text-[12px] text-red-600" role="alert">{saveError}</p>}
           {/* Name */}
           <div>
             <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
@@ -497,10 +519,10 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
           <button
             type="button"
             onClick={handleAdd}
-            disabled={!name || !expiryDate}
+            disabled={!name || !expiryDate || saving}
             className={`w-full bg-stone-900 disabled:bg-stone-200 disabled:text-stone-400 disabled:active:scale-100 text-white font-medium py-3.5 rounded-full text-[13px] tracking-wide mt-2 ${pressDark}`}
           >
-            {success ? "Added ✓" : "Add to pantry"}
+            {saving ? "Saving…" : success ? "Added ✓" : "Add to pantry"}
           </button>
         </div>
       )}

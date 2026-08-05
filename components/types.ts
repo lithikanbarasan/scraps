@@ -99,13 +99,14 @@ export interface IngredientExchangeRequest {
 }
 
 export interface UserProfile {
-  name: string;
+  firstName: string;
+  lastName: string;
   initials: string;
+  email: string;
   savedThisMonth: number;
   ingredientsRescued: number;
   co2Saved: number;
   mealsCooked: number;
-  notifications: Notification[];
 }
 
 export interface Notification {
