@@ -25,9 +25,11 @@ const FOOD_PARENT_HINTS = new Set([
   "produce",
   "fruit",
   "vegetable",
+  "plant",
   "meal",
   "dish",
   "drink",
+  "natural foods",
 ]);
 
 function getRekognitionClient() {
@@ -142,7 +144,7 @@ export async function POST(req: Request) {
     // Supplement: keep likely produce labels with no instances (e.g. onions) as count=1.
     const highConfidenceFoodLabels = toDetectedIngredients(foodLikely, {
       allowUncounted: true,
-      minConfidence: 65,
+      minConfidence: 50,
     }).filter((item) => isLikelyGroceryLabel(item.name));
 
     // Global fallback when food-parent hints are sparse.

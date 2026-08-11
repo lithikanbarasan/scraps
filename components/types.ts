@@ -68,6 +68,10 @@ export interface Recipe {
   steps: string[];
   /** Optional meal photo from TheMealDB */
   imageUrl?: string;
+  /** TheMealDB meal id for lookup refreshes */
+  mealDbId?: string;
+  /** Optional YouTube walkthrough from TheMealDB */
+  youtubeUrl?: string;
 }
 
 export interface FriendPost {

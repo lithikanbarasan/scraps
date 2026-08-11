@@ -218,7 +218,10 @@ export default function ScrapsApp() {
     loadPantry();
   }, [pantryReloadKey, session, supabase]);
 
-  const handleAddIngredient = async (newIng: Ingredient) => {
+  const handleAddIngredient = async (
+    newIng: Ingredient,
+    options?: { stayOnAddTab?: boolean }
+  ) => {
     setSavingPantry(true);
     setPantryError(null);
     const { data, error } = await supabase
@@ -237,7 +240,9 @@ export default function ScrapsApp() {
     setIngredients((prev) =>
       [...prev, pantryRowToIngredient(data)].sort((a, b) => a.daysLeft - b.daysLeft)
     );
-    setTimeout(() => setActiveTab("pantry"), 1200);
+    if (!options?.stayOnAddTab) {
+      setTimeout(() => setActiveTab("pantry"), 1200);
+    }
   };
 
   const handleRemoveIngredient = async (id: string) => {

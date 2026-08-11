@@ -1,12 +1,20 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Ingredient, UrgencyLevel } from "./types";
-import { getDaysLeft, getUrgency, parseAddBatchCount } from "./ingredientUtils";
+import {
+  estimateExpiryDate,
+  getDaysLeft,
+  getIngredientEmoji,
+  getUrgency,
+  parseAddBatchCount,
+} from "./ingredientUtils";
 import { pressDark, pressOutline } from "./pressableStyles";
 import {
   type DetectedIngredient,
   fetchDetectedIngredients,
 } from "./fetchDetectedIngredients";
+import { createImagePreviewUrl, fileToBase64 } from "../lib/imageBase64";
+import PhotoScannerCapture from "./PhotoScannerCapture";
 
 interface AddIngredientProps {
   onAdd: (ingredient: Ingredient, options?: { stayOnAddTab?: boolean }) => Promise<void>;
@@ -16,24 +24,8 @@ interface ReviewIngredient {
   id: string;
   name: string;
   count: number;
-}
-
-const EMOJI_MAP: Record<string, string> = {
-  spinach: "🥬", strawberr: "🍓", tomato: "🍅", carrot: "🥕",
-  cheese: "🧀", egg: "🥚", milk: "🥛", flour: "🌾", bread: "🍞",
-  chicken: "🍗", beef: "🥩", fish: "🐟", rice: "🍚", pasta: "🍝",
-  apple: "🍎", banana: "🍌", lemon: "🍋", onion: "🧅", garlic: "🧄",
-  pepper: "🫑", broccoli: "🥦", potato: "🥔", mushroom: "🍄", butter: "🧈",
-  yogurt: "🫙", orange: "🍊", blueberr: "🫐", avocado: "🥑",
-  soup: "🥫",
-};
-
-function getEmoji(name: string): string {
-  const lower = name.toLowerCase();
-  for (const [key, emoji] of Object.entries(EMOJI_MAP)) {
-    if (lower.includes(key)) return emoji;
-  }
-  return "🛒";
+  expiryDate: string;
+  selected: boolean;
 }
 
 const urgencyDot: Record<UrgencyLevel, string> = {
@@ -47,6 +39,37 @@ const urgencyText: Record<UrgencyLevel, string> = {
   yellow: "text-amber-600",
   green: "text-emerald-700",
 };
+
+function detectedToReviewItem(item: DetectedIngredient, idx: number): ReviewIngredient {
+  return {
+    id: `${Date.now()}-${idx}-${item.name}`,
+    name: item.name,
+    count: Math.max(1, item.count),
+    expiryDate: estimateExpiryDate(item.name),
+    selected: true,
+  };
+}
+
+function buildIngredientFromReview(item: ReviewIngredient): Ingredient {
+  const days = getDaysLeft(item.expiryDate);
+  const urgency = getUrgency(days);
+  const count = Math.max(1, Math.floor(item.count));
+
+  return {
+    id: `${Date.now()}-${item.name}`,
+    name: item.name.trim(),
+    quantity: String(count),
+    unit: "count",
+    count,
+    expiryDate: item.expiryDate,
+    daysLeft: days,
+    urgency,
+    estimatedValue: 0,
+    emoji: getIngredientEmoji(item.name),
+    isShared: urgency === "red",
+    autoShared: urgency === "red",
+  };
+}
 
 export default function AddIngredient({ onAdd }: AddIngredientProps) {
   const [tab, setTab] = useState<"manual" | "scan">("manual");
@@ -63,95 +86,66 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
   const [reviewItems, setReviewItems] = useState<ReviewIngredient[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  const estimateShelfLifeDays = (ingredientName: string): number => {
-    const lower = ingredientName.toLowerCase();
-    if (lower.includes("berry") || lower.includes("spinach") || lower.includes("lettuce")) {
-      return 4;
-    }
-    if (lower.includes("mushroom") || lower.includes("milk") || lower.includes("juice")) {
-      return 6;
-    }
-    if (lower.includes("apple") || lower.includes("orange") || lower.includes("onion")) {
-      return 12;
-    }
-    if (lower.includes("potato") || lower.includes("garlic")) {
-      return 20;
-    }
-    return 7;
-  };
-
-  const toBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("Unable to read selected image."));
-      reader.onload = () => {
-        const dataUrl = String(reader.result ?? "");
-        const base64 = dataUrl.split(",")[1] ?? "";
-        if (!base64) {
-          reject(new Error("Unable to process selected image."));
-          return;
-        }
-        resolve(base64);
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const addDetectedIngredient = async (ingredientName: string, amount: number) => {
-    const expiry = new Date();
-    expiry.setDate(expiry.getDate() + estimateShelfLifeDays(ingredientName));
-    const expiryIso = expiry.toISOString().split("T")[0];
-    const days = getDaysLeft(expiryIso);
-    const urgency = getUrgency(days);
-    const count = Math.max(1, Math.floor(amount));
-
-    const newIngredient: Ingredient = {
-      id: `${Date.now()}-${ingredientName}`,
-      name: ingredientName,
-      quantity: String(count),
-      unit: "count",
-      count,
-      expiryDate: expiryIso,
-      daysLeft: days,
-      urgency,
-      estimatedValue: 0,
-      emoji: getEmoji(ingredientName),
-      isShared: urgency === "red",
-      autoShared: urgency === "red",
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
+  }, [previewUrl]);
 
-    await onAdd(newIngredient, { stayOnAddTab: true });
+  const fillManualForm = (item: ReviewIngredient) => {
+    setName(item.name);
+    setQuantity(String(item.count));
+    setUnit("count");
+    setExpiryDate(item.expiryDate);
+    setEstimatedValue("");
+    setReviewOpen(false);
+    setTab("manual");
   };
 
   const addBlankReviewItem = () => {
     setReviewItems((prev) => [
       ...prev,
-      { id: `${Date.now()}-${prev.length}`, name: "", count: 1 },
+      {
+        id: `${Date.now()}-${prev.length}`,
+        name: "",
+        count: 1,
+        expiryDate: estimateExpiryDate(""),
+        selected: true,
+      },
     ]);
   };
 
   const applyReviewedItems = async () => {
     const cleaned = reviewItems
+      .filter((item) => item.selected)
       .map((item) => ({
+        ...item,
         name: item.name.trim(),
         count: Math.max(1, Math.floor(item.count)),
       }))
       .filter((item) => item.name.length > 0);
 
     if (cleaned.length === 0) {
-      setScanError("Add at least one item before saving.");
+      setScanError("Select at least one item with a name before saving.");
       return;
     }
 
     setSaving(true);
     setSaveError(null);
+    setScanError(null);
     try {
-      for (const item of cleaned) {
-        await addDetectedIngredient(item.name, item.count);
+      for (let i = 0; i < cleaned.length; i++) {
+        const item = cleaned[i];
+        await onAdd(buildIngredientFromReview(item), {
+          stayOnAddTab: i < cleaned.length - 1,
+        });
       }
       setDetectedNames(
-        cleaned.map((item) => `${item.count} ${item.name}${item.count > 1 ? "s" : ""}`)
+        cleaned.map(
+          (item) => `${item.count} ${item.name}${item.count > 1 ? "s" : ""}`
+        )
       );
       setReviewOpen(false);
       setSuccess(true);
@@ -179,7 +173,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
       daysLeft: days,
       urgency,
       estimatedValue: parseFloat(estimatedValue) || 0,
-      emoji: getEmoji(name),
+      emoji: getIngredientEmoji(name),
       isShared: urgency === "red",
       autoShared: urgency === "red",
     };
@@ -187,7 +181,10 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
     setSaveError(null);
     try {
       await onAdd(newIngredient);
-      setName(""); setQuantity(""); setExpiryDate(""); setEstimatedValue("");
+      setName("");
+      setQuantity("");
+      setExpiryDate("");
+      setEstimatedValue("");
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2000);
     } catch {
@@ -197,41 +194,40 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
     }
   };
 
-  const handleScanUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  const handleScanImage = async (file: File) => {
     setScanError(null);
+    setSaveError(null);
     setDetectedNames([]);
+
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(createImagePreviewUrl(file));
+
     setScanning(true);
     try {
-      const base64 = await toBase64(file);
+      const base64 = await fileToBase64(file);
       const detected = await fetchDetectedIngredients(base64);
 
       if (detected.length === 0) {
-        setScanError("No ingredients were detected. Try a clearer grocery photo.");
+        setScanError(
+          "No ingredients were detected. Try a clearer, well-lit grocery photo."
+        );
         return;
       }
 
-      setReviewItems(
-        detected.map((item: DetectedIngredient, idx) => ({
-          id: `${Date.now()}-${idx}-${item.name}`,
-          name: item.name,
-          count: Math.max(1, item.count),
-        }))
-      );
+      setReviewItems(detected.map(detectedToReviewItem));
       setReviewOpen(true);
     } catch (error) {
       setScanError(
         error instanceof Error
           ? error.message
-          : "Scan failed. Check AWS credentials and try again."
+          : "Scan failed. Please check your connection and try again."
       );
     } finally {
       setScanning(false);
-      event.target.value = "";
     }
   };
+
+  const selectedReviewCount = reviewItems.filter((item) => item.selected).length;
 
   const inputClass =
     "w-full bg-transparent border-0 border-b border-stone-200 focus:border-stone-900 px-0 py-3 text-[15px] font-normal text-stone-900 placeholder-stone-300 focus:outline-none focus:ring-0 transition-colors";
@@ -248,7 +244,12 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
           />
           <div className="relative z-10 w-full max-w-sm bg-white rounded-t-[28px] shadow-2xl max-h-[88vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-stone-100">
-              <h2 className="font-display text-[22px] text-stone-900">Review scan</h2>
+              <div>
+                <h2 className="font-display text-[22px] text-stone-900">Review scan</h2>
+                <p className="text-[12px] text-stone-500 mt-0.5">
+                  {reviewItems.length} detected · edit before saving
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setReviewOpen(false)}
@@ -257,55 +258,130 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
                 Close
               </button>
             </div>
-            <div className="overflow-y-auto px-6 py-5 pb-6 flex flex-col gap-3">
-              {reviewItems.map((item) => (
-                <div key={item.id} className="grid grid-cols-[1fr_78px_32px] gap-2 items-center">
-                  <div className="relative">
-                    <span
-                      aria-hidden
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-[2px] h-5 bg-stone-900/80 animate-pulse"
-                    />
-                    <input
-                      type="text"
-                      value={item.name}
-                      onChange={(e) =>
-                        setReviewItems((prev) =>
-                          prev.map((x) =>
-                            x.id === item.id ? { ...x, name: e.target.value } : x
-                          )
-                        )
-                      }
-                      placeholder="Ingredient name"
-                      className="w-full border border-stone-300 rounded-xl pl-7 pr-3 py-2 text-[14px] text-stone-900 placeholder-stone-400 focus:outline-none focus:border-stone-900 caret-stone-900"
-                    />
-                  </div>
-                  <input
-                    type="number"
-                    min={1}
-                    value={item.count}
-                    onChange={(e) =>
-                      setReviewItems((prev) =>
-                        prev.map((x) =>
-                          x.id === item.id
-                            ? { ...x, count: Number(e.target.value) || 1 }
-                            : x
-                        )
-                      )
-                    }
-                    className="border border-stone-300 rounded-xl px-2 py-2 text-[14px] text-stone-900 placeholder-stone-400 focus:outline-none focus:border-stone-900 caret-stone-900 text-center"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setReviewItems((prev) => prev.filter((x) => x.id !== item.id))
-                    }
-                    className={`text-stone-400 text-[18px] leading-none rounded-md ${pressOutline}`}
-                    aria-label="Remove item"
+            <div className="overflow-y-auto px-6 py-5 pb-6 flex flex-col gap-4">
+              {reviewItems.map((item) => {
+                const days = item.expiryDate ? getDaysLeft(item.expiryDate) : null;
+                const urgency =
+                  days !== null ? getUrgency(days) : ("green" as UrgencyLevel);
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`rounded-2xl border p-3 flex flex-col gap-2.5 transition ${
+                      item.selected
+                        ? "border-stone-300 bg-stone-50/60"
+                        : "border-stone-200 bg-white opacity-60"
+                    }`}
                   >
-                    ×
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-center gap-2.5">
+                      <input
+                        type="checkbox"
+                        checked={item.selected}
+                        onChange={(e) =>
+                          setReviewItems((prev) =>
+                            prev.map((x) =>
+                              x.id === item.id ? { ...x, selected: e.target.checked } : x
+                            )
+                          )
+                        }
+                        className="w-4 h-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900"
+                        aria-label={`Include ${item.name || "item"}`}
+                      />
+                      <span className="text-[20px]" aria-hidden>
+                        {getIngredientEmoji(item.name)}
+                      </span>
+                      <input
+                        type="text"
+                        value={item.name}
+                        onChange={(e) => {
+                          const nextName = e.target.value;
+                          setReviewItems((prev) =>
+                            prev.map((x) =>
+                              x.id === item.id
+                                ? {
+                                    ...x,
+                                    name: nextName,
+                                    expiryDate: x.expiryDate || estimateExpiryDate(nextName),
+                                  }
+                                : x
+                            )
+                          );
+                        }}
+                        placeholder="Ingredient name"
+                        className="flex-1 border border-stone-300 rounded-xl px-3 py-2 text-[14px] text-stone-900 placeholder-stone-400 focus:outline-none focus:border-stone-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setReviewItems((prev) => prev.filter((x) => x.id !== item.id))
+                        }
+                        className={`text-stone-400 text-[18px] leading-none rounded-md px-1 ${pressOutline}`}
+                        aria-label="Remove item"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-[78px_1fr] gap-2 items-end pl-[26px]">
+                      <div>
+                        <label className="text-[10px] uppercase tracking-[0.12em] text-stone-400 font-medium">
+                          Qty
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={item.count}
+                          onChange={(e) =>
+                            setReviewItems((prev) =>
+                              prev.map((x) =>
+                                x.id === item.id
+                                  ? { ...x, count: Number(e.target.value) || 1 }
+                                  : x
+                              )
+                            )
+                          }
+                          className="w-full border border-stone-300 rounded-xl px-2 py-2 text-[14px] text-stone-900 focus:outline-none focus:border-stone-900 text-center mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase tracking-[0.12em] text-stone-400 font-medium">
+                          Expires
+                        </label>
+                        <input
+                          type="date"
+                          value={item.expiryDate}
+                          onChange={(e) =>
+                            setReviewItems((prev) =>
+                              prev.map((x) =>
+                                x.id === item.id ? { ...x, expiryDate: e.target.value } : x
+                              )
+                            )
+                          }
+                          className="w-full border border-stone-300 rounded-xl px-3 py-2 text-[14px] text-stone-700 focus:outline-none focus:border-stone-900 mt-1"
+                        />
+                        {item.expiryDate && days !== null && (
+                          <div className="mt-1.5 flex items-center gap-1.5">
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${urgencyDot[urgency]}`}
+                            />
+                            <span className={`text-[11px] font-medium ${urgencyText[urgency]}`}>
+                              {days <= 0 ? "Expires today" : `${days} days left`}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => fillManualForm(item)}
+                      className={`self-start ml-[26px] text-[11px] font-medium text-stone-500 underline-offset-2 hover:underline ${pressOutline}`}
+                    >
+                      Edit in full form
+                    </button>
+                  </div>
+                );
+              })}
 
               <button
                 type="button"
@@ -315,14 +391,21 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
                 + Add missing item
               </button>
             </div>
-            <div className="px-6 pb-6 pt-2 border-t border-stone-100">
+            <div className="px-6 pb-6 pt-2 border-t border-stone-100 flex flex-col gap-2">
+              {saveError && (
+                <p className="text-[12px] text-red-600 text-center" role="alert">
+                  {saveError}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={applyReviewedItems}
-                disabled={saving}
-                className={`w-full py-3 rounded-full text-[13px] font-medium bg-stone-900 text-white ${pressDark}`}
+                disabled={saving || selectedReviewCount === 0}
+                className={`w-full py-3 rounded-full text-[13px] font-medium bg-stone-900 text-white disabled:bg-stone-200 disabled:text-stone-400 ${pressDark}`}
               >
-                {saving ? "Saving…" : "Add reviewed items"}
+                {saving
+                  ? "Saving…"
+                  : `Add ${selectedReviewCount} item${selectedReviewCount === 1 ? "" : "s"} to pantry`}
               </button>
             </div>
           </div>
@@ -363,58 +446,39 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
 
       {tab === "scan" ? (
         <div className="flex flex-col gap-4">
-          <div className="bg-stone-50 rounded-[22px] aspect-[4/3] flex flex-col items-center justify-center gap-4 border border-stone-200">
-            {scanning ? (
-              <>
-                <div className="w-10 h-10 border-2 border-stone-900 border-t-transparent rounded-full animate-spin" />
-                <p className="text-[13px] text-stone-600 font-medium tracking-wide">
-                  Scanning...
-                </p>
-              </>
-            ) : (
-              <>
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#57534e" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="6" width="18" height="14" rx="2" />
-                  <circle cx="12" cy="13" r="3.5" />
-                  <path d="M9 6l1.5-2h3L15 6" />
-                </svg>
-                <p className="text-[13px] text-stone-500 text-center px-6 leading-relaxed">
-                  Point at your fridge,
-                  <br />
-                  pantry, or grocery cart.
-                </p>
-                <label
-                  className={`bg-stone-900 text-white px-6 py-2.5 rounded-full text-[13px] font-medium cursor-pointer ${pressDark}`}
-                >
-                  Upload grocery photo
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={handleScanUpload}
-                  />
-                </label>
-              </>
-            )}
-          </div>
-          {detectedNames.length > 0 && (
+          <PhotoScannerCapture
+            scanning={scanning}
+            previewUrl={previewUrl}
+            onImageSelected={handleScanImage}
+            disabled={saving}
+          />
+          {success && (
+            <p className="text-[12px] text-emerald-700 leading-relaxed text-center px-4">
+              Added to pantry ✓
+            </p>
+          )}
+          {detectedNames.length > 0 && !success && (
             <p className="text-[12px] text-emerald-700 leading-relaxed text-center px-4">
               Added to pantry: {detectedNames.join(", ")}
             </p>
           )}
-          {scanError && (
-            <p className="text-[12px] text-red-600 leading-relaxed text-center px-4">
-              {scanError}
+          {(scanError || saveError) && (
+            <p className="text-[12px] text-red-600 leading-relaxed text-center px-4" role="alert">
+              {scanError ?? saveError}
             </p>
           )}
           <p className="text-[12px] text-stone-500 leading-relaxed text-center px-4">
-            AI identifies ingredients and adds them with default values. Edit dates and quantities after scan.
+            Snap or upload a grocery photo. AI detects ingredients, quantities, and
+            estimated expiry — review and edit before saving.
           </p>
         </div>
       ) : (
         <div className="flex flex-col gap-5">
-          {saveError && <p className="text-[12px] text-red-600" role="alert">{saveError}</p>}
+          {saveError && (
+            <p className="text-[12px] text-red-600" role="alert">
+              {saveError}
+            </p>
+          )}
           {/* Name */}
           <div>
             <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
@@ -429,9 +493,11 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
             />
             {name && (
               <p className="text-[11px] text-stone-400 mt-1.5 flex items-center gap-1.5">
-                <span>{getEmoji(name)}</span>
+                <span>{getIngredientEmoji(name)}</span>
                 <span>
-                  {getEmoji(name) !== "🥫" ? "Recognized" : "Will use generic icon"}
+                  {getIngredientEmoji(name) !== "🥫"
+                    ? "Recognized"
+                    : "Will use generic icon"}
                 </span>
               </p>
             )}
@@ -460,9 +526,11 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
                 onChange={(e) => setUnit(e.target.value)}
                 className={`${inputClass} appearance-none cursor-pointer text-stone-700`}
               >
-                {["count", "oz", "lbs", "kg", "g", "pint", "bag", "gallon", "cup", "bunch"].map((u) => (
-                  <option key={u}>{u}</option>
-                ))}
+                {["count", "oz", "lbs", "kg", "g", "pint", "bag", "gallon", "cup", "bunch"].map(
+                  (u) => (
+                    <option key={u}>{u}</option>
+                  )
+                )}
               </select>
             </div>
           </div>
@@ -480,16 +548,18 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
             />
             {expiryDate && (
               <div className="mt-2 flex items-center gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full ${urgencyDot[getUrgency(getDaysLeft(expiryDate))]}`} />
-                <span className={`text-[12px] font-medium ${urgencyText[getUrgency(getDaysLeft(expiryDate))]}`}>
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${urgencyDot[getUrgency(getDaysLeft(expiryDate))]}`}
+                />
+                <span
+                  className={`text-[12px] font-medium ${urgencyText[getUrgency(getDaysLeft(expiryDate))]}`}
+                >
                   {getDaysLeft(expiryDate) <= 0
                     ? "Expires today"
                     : `${getDaysLeft(expiryDate)} days left`}
                 </span>
                 {getUrgency(getDaysLeft(expiryDate)) === "red" && (
-                  <span className="text-[11px] text-stone-400">
-                    · Will auto-share
-                  </span>
+                  <span className="text-[11px] text-stone-400">· Will auto-share</span>
                 )}
               </div>
             )}
@@ -501,9 +571,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
               Estimated value
             </label>
             <div className="flex items-center gap-1 border-b border-stone-200">
-              <span className="text-[15px] text-stone-400 pt-[1px]">
-                $
-              </span>
+              <span className="text-[15px] text-stone-400 pt-[1px]">$</span>
               <input
                 type="number"
                 value={estimatedValue}

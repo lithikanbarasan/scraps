@@ -24,3 +24,67 @@ export function parseAddBatchCount(quantity: string): number {
   const n = Math.floor(Number.parseFloat(quantity));
   return Number.isFinite(n) && n >= 1 ? n : 1;
 }
+
+/** Rough shelf-life estimate (days) used when scanning groceries. */
+export function estimateShelfLifeDays(ingredientName: string): number {
+  const lower = ingredientName.toLowerCase();
+  if (lower.includes("berry") || lower.includes("spinach") || lower.includes("lettuce")) {
+    return 4;
+  }
+  if (lower.includes("mushroom") || lower.includes("milk") || lower.includes("juice")) {
+    return 6;
+  }
+  if (lower.includes("apple") || lower.includes("orange") || lower.includes("onion")) {
+    return 12;
+  }
+  if (lower.includes("potato") || lower.includes("garlic")) {
+    return 20;
+  }
+  return 7;
+}
+
+export function estimateExpiryDate(ingredientName: string): string {
+  const expiry = new Date();
+  expiry.setDate(expiry.getDate() + estimateShelfLifeDays(ingredientName));
+  return expiry.toISOString().split("T")[0];
+}
+
+const INGREDIENT_EMOJI_MAP: Record<string, string> = {
+  spinach: "🥬",
+  strawberr: "🍓",
+  tomato: "🍅",
+  carrot: "🥕",
+  cheese: "🧀",
+  egg: "🥚",
+  milk: "🥛",
+  flour: "🌾",
+  bread: "🍞",
+  chicken: "🍗",
+  beef: "🥩",
+  fish: "🐟",
+  rice: "🍚",
+  pasta: "🍝",
+  apple: "🍎",
+  banana: "🍌",
+  lemon: "🍋",
+  onion: "🧅",
+  garlic: "🧄",
+  pepper: "🫑",
+  broccoli: "🥦",
+  potato: "🥔",
+  mushroom: "🍄",
+  butter: "🧈",
+  yogurt: "🫙",
+  orange: "🍊",
+  blueberr: "🫐",
+  avocado: "🥑",
+  soup: "🥫",
+};
+
+export function getIngredientEmoji(name: string): string {
+  const lower = name.toLowerCase();
+  for (const [key, emoji] of Object.entries(INGREDIENT_EMOJI_MAP)) {
+    if (lower.includes(key)) return emoji;
+  }
+  return "🛒";
+}
