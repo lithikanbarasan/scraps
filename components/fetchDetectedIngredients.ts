@@ -1,6 +1,8 @@
 export interface DetectedIngredient {
   name: string;
   count: number;
+  confidence?: number;
+  estimatedValue?: number;
 }
 
 export async function fetchDetectedIngredients(
@@ -29,7 +31,7 @@ export async function fetchDetectedIngredients(
 
   return data.ingredients
     .filter(
-      (value): value is { name: string; count?: number } =>
+      (value): value is { name: string; count?: number; estimatedValue?: number } =>
         !!value &&
         typeof value === "object" &&
         typeof (value as { name?: unknown }).name === "string"
@@ -40,5 +42,9 @@ export async function fetchDetectedIngredients(
         typeof value.count === "number" && Number.isFinite(value.count)
           ? Math.max(1, Math.floor(value.count))
           : 1,
+          estimatedValue:
+          typeof value.estimatedValue === "number" && Number.isFinite(value.estimatedValue)
+            ? value.estimatedValue
+            : 0,
     }));
 }

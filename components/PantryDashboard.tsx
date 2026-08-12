@@ -229,8 +229,7 @@ export default function PantryDashboard({
                 </p>
               </div>
               <p className="text-[12px] text-stone-400 mt-0.5 ml-3.5">
-                {ing.count > 1 ? `${ing.count} × ` : ""}
-                {ing.quantity} {ing.unit} · ${ing.estimatedValue.toFixed(2)}
+                {ing.count || ing.quantity} {ing.unit} · ${ing.estimatedValue.toFixed(2)}
               </p>
             </div>
 

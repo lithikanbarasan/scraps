@@ -25,6 +25,7 @@ interface ReviewIngredient {
   name: string;
   count: number;
   expiryDate: string;
+  estimatedValue: number; 
   selected: boolean;
 }
 
@@ -46,6 +47,7 @@ function detectedToReviewItem(item: DetectedIngredient, idx: number): ReviewIngr
     name: item.name,
     count: Math.max(1, item.count),
     expiryDate: estimateExpiryDate(item.name),
+    estimatedValue: item.estimatedValue || 0, 
     selected: true,
   };
 }
@@ -64,7 +66,7 @@ function buildIngredientFromReview(item: ReviewIngredient): Ingredient {
     expiryDate: item.expiryDate,
     daysLeft: days,
     urgency,
-    estimatedValue: 0,
+    estimatedValue: item.estimatedValue || 0, // 👈 3. Pass cost to saved pantry item
     emoji: getIngredientEmoji(item.name),
     isShared: urgency === "red",
     autoShared: urgency === "red",
@@ -99,7 +101,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
     setQuantity(String(item.count));
     setUnit("count");
     setExpiryDate(item.expiryDate);
-    setEstimatedValue("");
+    setEstimatedValue(item.estimatedValue ? String(item.estimatedValue) : "");
     setReviewOpen(false);
     setTab("manual");
   };
@@ -112,6 +114,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
         name: "",
         count: 1,
         expiryDate: estimateExpiryDate(""),
+        estimatedValue: 0,
         selected: true,
       },
     ]);
@@ -322,7 +325,8 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-[78px_1fr] gap-2 items-end pl-[26px]">
+                    {/* 4. Updated 3-column Grid for Qty, Expires, and Est. Cost */}
+                    <div className="grid grid-cols-[60px_1fr_80px] gap-2 items-start pl-[26px]">
                       <div>
                         <label className="text-[10px] uppercase tracking-[0.12em] text-stone-400 font-medium">
                           Qty
@@ -340,9 +344,10 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
                               )
                             )
                           }
-                          className="w-full border border-stone-300 rounded-xl px-2 py-2 text-[14px] text-stone-900 focus:outline-none focus:border-stone-900 text-center mt-1"
+                          className="w-full border border-stone-300 rounded-xl px-1.5 py-2 text-[14px] text-stone-900 focus:outline-none focus:border-stone-900 text-center mt-1"
                         />
                       </div>
+
                       <div>
                         <label className="text-[10px] uppercase tracking-[0.12em] text-stone-400 font-medium">
                           Expires
@@ -357,7 +362,7 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
                               )
                             )
                           }
-                          className="w-full border border-stone-300 rounded-xl px-3 py-2 text-[14px] text-stone-700 focus:outline-none focus:border-stone-900 mt-1"
+                          className="w-full border border-stone-300 rounded-xl px-2 py-2 text-[13px] text-stone-700 focus:outline-none focus:border-stone-900 mt-1"
                         />
                         {item.expiryDate && days !== null && (
                           <div className="mt-1.5 flex items-center gap-1.5">
@@ -369,6 +374,32 @@ export default function AddIngredient({ onAdd }: AddIngredientProps) {
                             </span>
                           </div>
                         )}
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase tracking-[0.12em] text-stone-400 font-medium">
+                          Est. Cost
+                        </label>
+                        <div className="relative mt-1">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[12px] text-stone-400">
+                            $
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={item.estimatedValue ?? ""}
+                            onChange={(e) =>
+                              setReviewItems((prev) =>
+                                prev.map((x) =>
+                                  x.id === item.id
+                                    ? { ...x, estimatedValue: parseFloat(e.target.value) || 0 }
+                                    : x
+                                )
+                              )
+                            }
+                            className="w-full border border-stone-300 rounded-xl pl-5 pr-1.5 py-2 text-[13px] text-stone-900 font-medium focus:outline-none focus:border-stone-900"
+                          />
+                        </div>
                       </div>
                     </div>
 

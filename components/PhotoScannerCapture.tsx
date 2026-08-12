@@ -10,6 +10,66 @@ interface PhotoScannerCaptureProps {
   disabled?: boolean;
 }
 
+/**
+ * Resizes and compresses an image file using an HTML5 Canvas.
+ * Reduces 10MB+ phone uploads down to ~150KB for instant API requests.
+ */
+async function compressImage(file: File, maxDimension = 1024, quality = 0.7): Promise<File> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+
+      let { width, height } = img;
+
+      // Scale down dimensions if either exceeds maxDimension
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(file); // Fallback to original file if context fails
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          // Wrap blob back into a File object
+          const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+            type: "image/jpeg",
+            lastModified: Date.now(),
+          });
+          resolve(compressedFile);
+        },
+        "image/jpeg",
+        quality
+      );
+    };
+
+    img.onerror = () => resolve(file);
+    img.src = url;
+  });
+}
+
 export default function PhotoScannerCapture({
   scanning,
   previewUrl,
@@ -19,12 +79,15 @@ export default function PhotoScannerCapture({
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
-    onImageSelected(file);
+  
+    // Compress first, then pass to handler
+    const compressed = await compressImage(file);
+    onImageSelected(compressed);
   };
 
   const busy = scanning || disabled;
