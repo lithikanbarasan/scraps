@@ -373,11 +373,37 @@ export default function Recipes({
           )
       )
       .sort((a, b) => {
-        const coverage = pantryCoverageScore(b) - pantryCoverageScore(a);
+        // 1. Recipes that use more expiring food come first
+        const urgent =
+          b.expiringIngredients.length - a.expiringIngredients.length;
+      
+        if (urgent !== 0) return urgent;
+      
+        // 2. Then prefer recipes that use more of your pantry
+        const coverage =
+          pantryCoverageScore(b) - pantryCoverageScore(a);
+      
         if (coverage !== 0) return coverage;
-        const missing = a.allIngredients.length - b.allIngredients.length;
+      
+        // 3. Then prefer recipes missing fewer ingredients
+        const missing =
+          missingItemsCount(a.ingredientMatch) -
+          missingItemsCount(b.ingredientMatch);
+      
         if (missing !== 0) return missing;
-        return a.name.localeCompare(b.name);
+      
+        // 4. Final tie-breaker: stable non-alphabetical order
+        const hash = (s: string) => {
+          let h = 0;
+      
+          for (let i = 0; i < s.length; i++) {
+            h = (h * 31 + s.charCodeAt(i)) >>> 0;
+          }
+      
+          return h;
+        };
+      
+        return hash(a.id) - hash(b.id);
       });
   }, [
     recipes,

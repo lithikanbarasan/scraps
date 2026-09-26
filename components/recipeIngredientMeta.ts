@@ -4,27 +4,46 @@ export function isExpiringIngredient(
   recipe: Recipe,
   ingredientDisplayName: string
 ): boolean {
-  const a = ingredientDisplayName.toLowerCase();
-  return recipe.expiringIngredients.some((ex) => {
-    const b = ex.toLowerCase();
-    return (
-      a.includes(b) ||
-      b.includes(a) ||
-      a.split(/\s+/).some((w) => w.length > 2 && b.includes(w))
-    );
-  });
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const ingredient = normalize(ingredientDisplayName);
+
+  return recipe.expiringIngredients.some(
+    (expiring) => normalize(expiring) === ingredient
+  );
 }
 
 export function findUseSource(
   recipe: Recipe,
   ingredientDisplayName: string
 ): RecipeUsesSource | undefined {
-  const a = ingredientDisplayName.toLowerCase();
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const display = normalize(ingredientDisplayName);
+
   return recipe.usesSources?.find((u) => {
-    const k = u.ingredientLabel.toLowerCase();
-    return (
-      a.includes(k) ||
-      k.split(/\s/).some((part) => part.length > 2 && a.includes(part))
+    const pantry = normalize(u.ingredientLabel);
+
+    if (!pantry) return false;
+
+    const pantryWords = pantry.split(" ");
+
+    return pantryWords.every((word) =>
+      display.split(" ").some(
+        (displayWord) =>
+          displayWord === word ||
+          displayWord === `${word}s` ||
+          `${displayWord}s` === word
+      )
     );
   });
 }

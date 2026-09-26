@@ -32,19 +32,51 @@ export function extractIngredients(meal: MealDbRaw): string[] {
   return out;
 }
 
+
 export function ingredientLinesMatch(
   pantryName: string,
   recipeLine: string
 ): boolean {
-  const p = pantryName.toLowerCase().trim();
-  const r = recipeLine.toLowerCase().trim();
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const p = normalize(pantryName);
+  const r = normalize(recipeLine);
+
   if (!p || !r) return false;
-  if (r === p) return true;
-  if (r.includes(p) || p.includes(r)) return true;
-  const pWords = p.split(/\s+/).filter((w) => w.length > 2);
-  const rWords = r.split(/\s+/).filter((w) => w.length > 2);
-  return pWords.some((pw) =>
-    rWords.some((rw) => rw.includes(pw) || pw.includes(rw))
+
+  const blockedModifiers = [
+    "puree",
+    "paste",
+    "sauce",
+    "juice",
+    "powder",
+    "dried",
+    "canned",
+  ];
+  
+  const recipeWords = r.split(" ");
+  
+  if (
+    p === "tomato" &&
+    blockedModifiers.some((modifier) => recipeWords.includes(modifier))
+  ) {
+    return false;
+  }
+
+  const pantryWords = p.split(" ");
+
+  return pantryWords.every((pw) =>
+    recipeWords.some(
+      (rw) =>
+        rw === pw ||
+        rw === `${pw}s` ||
+        `${rw}s` === pw
+    )
   );
 }
 
@@ -104,12 +136,14 @@ function computeMatch(
 
   for (const p of pantry) {
     const line = allIngs.find((r) => ingredientLinesMatch(p.name, r));
-    if (line) {
+    if (line && !matchedRecipeLines.has(line)) {
       matchedRecipeLines.add(line);
+    
       usesSources.push({
         ingredientLabel: line,
         source: "yours",
       });
+    
       if (p.urgency !== "green") {
         expiringDisplay.push(line);
       }

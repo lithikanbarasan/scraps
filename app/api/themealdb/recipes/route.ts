@@ -5,7 +5,6 @@ import {
   ingredientFilterQueries,
   lookupMeal,
   mealToRecipe,
-  searchByLetter,
   type PantryLite,
 } from "@/lib/themealdb/mapMeal";
 import {
@@ -39,15 +38,6 @@ export async function POST(req: Request) {
     // are removed before performing individual meal lookups.
     const candidateIds: string[] = [];
 
-    const letterMeals = await searchByLetter("a");
-
-    for (const meal of letterMeals) {
-      const id = meal.idMeal;
-
-      if (id) {
-        candidateIds.push(String(id));
-      }
-    }
 
     // Keep track of ingredient queries so the same search
     // is not sent to TheMealDB more than once.

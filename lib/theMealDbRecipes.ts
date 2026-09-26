@@ -68,7 +68,7 @@ function pantryMatchesIngredient(
       if (a.length < 3) continue;
       for (const b of pw) {
         if (b.length < 3) continue;
-        if (a === b || a.includes(b) || b.includes(a)) return p;
+        if (a === b) return p;
       }
     }
   }
