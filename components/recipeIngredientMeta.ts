@@ -11,10 +11,21 @@ export function isExpiringIngredient(
       .trim();
 
   const ingredient = normalize(ingredientDisplayName);
+  const displayWords = normalize(ingredientDisplayName).split(" ");
 
-  return recipe.expiringIngredients.some(
-    (expiring) => normalize(expiring) === ingredient
-  );
+  return recipe.expiringIngredients.some((expiring) => {
+    const normalized = normalize(expiring);
+    if (!normalized) return false;
+
+    return normalized.split(" ").every((word) =>
+      displayWords.some(
+        (displayWord) =>
+          displayWord === word ||
+          displayWord === `${word}s` ||
+          `${displayWord}s` === word
+      )
+    );
+  });
 }
 
 export function findUseSource(

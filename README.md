@@ -73,7 +73,7 @@ GEMINI_API_KEY=your_gemini_api_key
 
 # Supabase Configuration
 NEXT_PUBLIC_SUPABASE_URL=[https://your-project.supabase.co](https://your-project.supabase.co)
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
 ```
 
 ---
@@ -97,3 +97,13 @@ scraps/
     ├── imageBase64.ts         # Client-side base64 helpers
     └── supabaseClient.ts      # Supabase database initialization
 ```
+
+## Social setup (friends-only beta)
+
+Apply the three SQL migrations in `supabase/migrations` in filename order to your Supabase project before starting the app. Each account sets a unique handle under Friends. Invite another handle; the recipient accepts the invitation. Pantry items are shared only when the owner presses Share, and accepted friends can see those listings. Unshare removes the listing. Expired items are hidden from the feed.
+
+The feed currently supports discovery and viewing. In-app item requests, pickups, notifications, and impact statistics are future milestones; users arrange pickups directly for now. The migration has not been applied to any hosted database by this repository change.
+
+### Item requests and claims
+
+After the social migration, apply `20260927000001_share_insert_policy.sql` and `20260927000002_exchange_requests.sql` in order. Friends can request a listed item. The owner accepts or declines under Requests; accepting closes the listing and declines competing pending requests in one transaction. The pantry row remains with the owner until they manually remove or adjust it after handoff. A closed item can be posted again later. The app refreshes the community view periodically while it is open.

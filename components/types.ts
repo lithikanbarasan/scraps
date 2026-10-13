@@ -76,6 +76,7 @@ export interface Recipe {
 
 export interface FriendPost {
   id: string;
+  pantryItemId?: string;
   friendName: string;
   friendInitials: string;
   ingredientName: string;

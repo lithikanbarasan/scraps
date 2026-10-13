@@ -4,7 +4,7 @@ import type { Session } from "@supabase/supabase-js";
 import PantryDashboard from "./PantryDashboard";
 import AddIngredient from "./AddIngredient";
 import Recipes from "./Recipes";
-import Social from "./Social";
+import Social, { type FriendConnection, type ShareRequest } from "./Social";
 import Profile from "./Profile";
 import NotificationsSheet from "./NotificationsSheet";
 import EditProfileSheet from "./EditProfileSheet";
@@ -13,7 +13,7 @@ import CompleteProfileScreen from "./CompleteProfileScreen";
 import { pressFlat } from "./pressableStyles";
 import {
   Ingredient,
-  IngredientExchangeRequest,
+  FriendPost,
   Notification,
   UserProfile,
 } from "./types";
@@ -137,9 +137,13 @@ export default function ScrapsApp() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileEditOpen, setProfileEditOpen] = useState(false);
   const [notifications] = useState<Notification[]>([]);
-  const [exchangeRequests, setExchangeRequests] = useState<
-    IngredientExchangeRequest[]
-  >([]);
+  const [connections, setConnections] = useState<FriendConnection[]>([]);
+  const [friendPosts, setFriendPosts] = useState<FriendPost[]>([]);
+  const [shareRequests, setShareRequests] = useState<ShareRequest[]>([]);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [socialError, setSocialError] = useState<string | null>(null);
+  const [socialReloadKey, setSocialReloadKey] = useState(0);
+  const refreshSocial = () => setSocialReloadKey(k => k + 1);
 
   useEffect(() => {
     let mounted = true;
@@ -202,6 +206,7 @@ export default function ScrapsApp() {
       const { data, error } = await supabase
         .from("pantry_items")
         .select("*")
+        .eq("user_id", session.user.id)
         .order("expires_on", { ascending: true });
 
       if (error) {
@@ -211,12 +216,98 @@ export default function ScrapsApp() {
         return;
       }
 
-      setIngredients((data ?? []).map(pantryRowToIngredient));
+      const { data: ownListings, error: listingError } = await supabase.from("share_listings")
+        .select("pantry_item_id").eq("owner_id", session.user.id).eq("status", "active");
+      if (listingError) setSocialError("Could not load sharing status.");
+      const sharedIds = new Set((ownListings ?? []).map(l => l.pantry_item_id));
+      setIngredients((data ?? []).map(row => ({ ...pantryRowToIngredient(row), isShared: sharedIds.has(row.id) })));
       setLoadingPantry(false);
     }
 
     loadPantry();
   }, [pantryReloadKey, session, supabase]);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    async function loadSocial() {
+      setSocialLoading(true);
+      setSocialError(null);
+      const uid = session!.user.id;
+      const [friendsResult, listingsResult, requestsResult] = await Promise.all([
+        supabase.from("friendships").select("*").or(`requester_id.eq.${uid},addressee_id.eq.${uid}`),
+        supabase.from("share_listings").select("*").eq("status", "active"),
+        supabase.from("exchange_requests").select("*").order("created_at", { ascending: false }),
+      ]);
+      if (cancelled) return;
+      if (friendsResult.error || listingsResult.error || requestsResult.error) {
+        setSocialError("Could not load your friends and shared food. Check that the social migration is applied.");
+        setSocialLoading(false);
+        return;
+      }
+      const friends = friendsResult.data ?? [];
+      const listings = listingsResult.data ?? [];
+      const requests = requestsResult.data ?? [];
+      const peopleIds = [...new Set([
+        ...friends.map(f => f.requester_id === uid ? f.addressee_id : f.requester_id),
+        ...requests.map(r => r.owner_id === uid ? r.requester_id : r.owner_id),
+      ])];
+      const itemIds = listings.map(l => l.pantry_item_id);
+      const [peopleResult, itemsResult] = await Promise.all([
+        peopleIds.length ? supabase.from("profiles").select("id,first_name,last_name,handle").in("id", peopleIds) : Promise.resolve({ data: [], error: null }),
+        itemIds.length ? supabase.from("pantry_items").select("*").in("id", itemIds) : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (cancelled) return;
+      if (peopleResult.error || itemsResult.error) {
+        setSocialError("Could not load shared items.");
+        setSocialLoading(false);
+        return;
+      }
+      const people = new Map((peopleResult.data ?? []).map(p => [p.id, p]));
+      const items = new Map((itemsResult.data ?? []).map(i => [i.id, i]));
+      setConnections(friends.filter(f => f.status !== "declined").map(f => {
+        const otherId = f.requester_id === uid ? f.addressee_id : f.requester_id;
+        const person = people.get(otherId);
+        return { id: f.id, otherId, name: [person?.first_name, person?.last_name].filter(Boolean).join(" ") || "Friend", handle: person?.handle ?? null, status: f.status, incoming: f.addressee_id === uid };
+      }));
+      setShareRequests(requests.map(r => {
+        const otherId = r.owner_id === uid ? r.requester_id : r.owner_id;
+        const person = people.get(otherId);
+        return {
+          id: r.id, listingId: r.listing_id, direction: r.owner_id === uid ? "incoming" as const : "outgoing" as const,
+          personName: [person?.first_name, person?.last_name].filter(Boolean).join(" ") || "Friend",
+          ingredientName: r.ingredient_name, ingredientEmoji: r.ingredient_emoji,
+          quantity: r.quantity, status: r.status,
+        };
+      }));
+      setFriendPosts(listings.flatMap(l => {
+        const row = items.get(l.pantry_item_id);
+        if (!row || row.expires_on < new Date().toISOString().slice(0, 10)) return [];
+        const person = people.get(l.owner_id);
+        const ingredient = pantryRowToIngredient(row);
+        const name = l.owner_id === uid ? "You" : [person?.first_name, person?.last_name].filter(Boolean).join(" ") || "Friend";
+        return [{ id: l.id, pantryItemId: l.pantry_item_id, friendName: name, friendInitials: initialsFromFullName(name), ingredientName: row.name, ingredientEmoji: row.emoji, daysLeft: ingredient.daysLeft, urgency: ingredient.urgency, quantity: `${row.count} ${row.unit}`, isAutoShared: false, requested: false }];
+      }));
+      const activeOwn = new Set(listings.filter(l => l.owner_id === uid).map(l => l.pantry_item_id));
+      setIngredients(prev => prev.map(i => ({ ...i, isShared: activeOwn.has(i.id) })));
+      setSocialLoading(false);
+    }
+    void loadSocial();
+    return () => { cancelled = true; };
+  }, [session, socialReloadKey, supabase]);
+
+  // Other accounts do not share this browser's React state. Refresh the social
+  // feed while it is open so incoming invitations and listings appear promptly.
+  useEffect(() => {
+    if (!session || activeTab !== "social") return;
+    const timer = window.setInterval(refreshSocial, 8000);
+    const onFocus = () => refreshSocial();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [session, activeTab]);
 
   const handleAddIngredient = async (
     newIng: Ingredient,
@@ -256,15 +347,76 @@ export default function ScrapsApp() {
       return false;
     }
     setIngredients((prev) => prev.filter((ing) => ing.id !== id));
+    refreshSocial();
     return true;
   };
 
-  const handleToggleShare = (id: string) => {
-    setIngredients((prev) =>
-      prev.map((ing) =>
-        ing.id === id ? { ...ing, isShared: !ing.isShared } : ing
-      )
-    );
+  const handleToggleShare = async (id: string) => {
+    if (!session) return;
+    const current = ingredients.find(i => i.id === id);
+    if (!current) return;
+    setSavingPantry(true);
+    let error: { message: string } | null = null;
+    if (current.isShared) {
+      // Resolve by pantry ID so equal-name items remain distinct.
+      const { data, error: lookupError } = await supabase.from("share_listings")
+        .select("id").eq("pantry_item_id", id).eq("owner_id", session.user.id)
+        .eq("status", "active").maybeSingle();
+      if (lookupError) error = lookupError;
+      else if (data) {
+        const result = await supabase.rpc("close_share_listing", { target_listing_id: data.id });
+        error = result.error;
+      } else error = { message: "Listing not found" };
+    } else {
+      const result = await supabase.from("share_listings").insert({ pantry_item_id: id, owner_id: session.user.id });
+      error = result.error;
+    }
+    setSavingPantry(false);
+    if (error) {
+      console.error("Failed to change sharing:", error);
+      setPantryError("Could not change sharing. Please try again.");
+      return;
+    }
+    setIngredients(prev => prev.map(i => i.id === id ? { ...i, isShared: !current.isShared } : i));
+    refreshSocial();
+  };
+
+  const requestItem = async (listingId: string) => {
+    const { error } = await supabase.rpc("request_share_listing", { target_listing_id: listingId });
+    if (error) { setSocialError(error.message); return false; }
+    refreshSocial();
+    return true;
+  };
+
+  const resolveItemRequest = async (requestId: string, resolution: "accepted" | "declined" | "cancelled") => {
+    const { error } = await supabase.rpc("resolve_share_request", { target_request_id: requestId, resolution });
+    if (error) { setSocialError(error.message); return; }
+    refreshSocial();
+  };
+
+  const setHandle = async (handle: string) => {
+    if (!session || !/^[a-z0-9_]{3,24}$/.test(handle)) return false;
+    const { data, error } = await supabase.from("profiles").update({ handle }).eq("id", session.user.id).select().single();
+    if (error || !data) return false;
+    setProfile(data);
+    return true;
+  };
+
+  const inviteFriend = async (handle: string) => {
+    if (!session) return false;
+    const { data, error } = await supabase.rpc("find_profile_by_handle", { lookup_handle: handle });
+    if (error || !data?.[0]) return false;
+    const result = await supabase.from("friendships").insert({ requester_id: session.user.id, addressee_id: data[0].id });
+    if (result.error) return false;
+    refreshSocial();
+    return true;
+  };
+
+  const respondToFriend = async (id: string, status: "accepted" | "declined") => {
+    if (!session) return;
+    const { error } = await supabase.from("friendships").update({ status }).eq("id", id).eq("addressee_id", session.user.id);
+    if (error) setSocialError("Could not respond to the invitation.");
+    else refreshSocial();
   };
 
   const handleUpdateIngredient = async (
@@ -301,7 +453,7 @@ export default function ScrapsApp() {
       return false;
     }
 
-    const saved = pantryRowToIngredient(data);
+    const saved = { ...pantryRowToIngredient(data), isShared: current.isShared };
     setIngredients((prev) =>
       prev.map((ingredient) => ingredient.id === id ? saved : ingredient)
         .sort((a, b) => a.daysLeft - b.daysLeft)
@@ -343,7 +495,9 @@ export default function ScrapsApp() {
     }
     setIngredients([]);
     setProfile(null);
-    setExchangeRequests([]);
+    setConnections([]);
+    setFriendPosts([]);
+    setShareRequests([]);
     setNotificationsOpen(false);
     setProfileEditOpen(false);
     setActiveTab("pantry");
@@ -398,7 +552,6 @@ export default function ScrapsApp() {
   }
 
   const userProfile = toUserProfile(profile!, session.user.email ?? "");
-  const sharedIngredients = ingredients.filter((i) => i.isShared);
   const unreadNotifs = notifications.filter((n) => !n.read).length;
   const notifBadge = unreadNotifs > 0 ? (unreadNotifs > 9 ? "9+" : String(unreadNotifs)) : null;
 
@@ -514,10 +667,20 @@ export default function ScrapsApp() {
             </div>
             {activeTab === "social" && (
               <Social
-                friendPosts={[]}
-                mySharedIngredients={sharedIngredients}
-                exchangeRequests={exchangeRequests}
-                setExchangeRequests={setExchangeRequests}
+                myHandle={profile?.handle ?? null}
+                friendPosts={friendPosts}
+                pantryItems={ingredients}
+                shareRequests={shareRequests}
+                connections={connections}
+                loading={socialLoading}
+                error={socialError}
+                onSetHandle={setHandle}
+                onInvite={inviteFriend}
+                onRespond={respondToFriend}
+                onToggleShare={handleToggleShare}
+                onRequestItem={requestItem}
+                onResolveRequest={resolveItemRequest}
+                onRefresh={refreshSocial}
               />
             )}
             {activeTab === "profile" && (

@@ -1,506 +1,139 @@
 "use client";
 import React, { useState } from "react";
-import type {
-  FriendPost,
-  Ingredient,
-  IngredientExchangeRequest,
-  ExchangeRequestStatus,
-  UrgencyLevel,
-} from "./types";
+import type { FriendPost, Ingredient } from "./types";
 import { pressDark, pressOutline } from "./pressableStyles";
 
-/** Stable id for outgoing rows created from the Friends feed (Request button). */
-function outgoingRequestIdForFriendPost(postId: string): string {
-  return `outgoing-post-${postId}`;
-}
-
-interface SocialProps {
-  friendPosts: FriendPost[];
-  mySharedIngredients: Ingredient[];
-  exchangeRequests: IngredientExchangeRequest[];
-  setExchangeRequests: React.Dispatch<
-    React.SetStateAction<IngredientExchangeRequest[]>
-  >;
-}
-
-const urgencyDot: Record<UrgencyLevel, string> = {
-  red: "bg-red-500",
-  yellow: "bg-amber-400",
-  green: "bg-emerald-500",
+export type FriendConnection = {
+  id: string; otherId: string; name: string; handle: string | null;
+  status: string; incoming: boolean;
+};
+export type ShareRequest = {
+  id: string; listingId: string; direction: "incoming" | "outgoing";
+  personName: string; ingredientName: string; ingredientEmoji: string;
+  quantity: string; status: string;
 };
 
-const urgencyText: Record<UrgencyLevel, string> = {
-  red: "text-red-600",
-  yellow: "text-amber-600",
-  green: "text-stone-500",
-};
-
-const avatarTints = [
-  "bg-stone-100 text-stone-700",
-  "bg-stone-200 text-stone-700",
-  "bg-amber-50 text-amber-900",
-  "bg-stone-50 text-stone-700",
-];
-
-const statusStyle: Record<
-  IngredientExchangeRequest["status"],
-  string
-> = {
-  pending: "bg-amber-100 text-amber-900 border-amber-200",
-  approved: "bg-emerald-100 text-emerald-900 border-emerald-200",
-  declined: "bg-red-100 text-red-900 border-red-200",
-};
+type Tab = "feed" | "mine" | "requests" | "friends";
 
 export default function Social({
-  friendPosts,
-  mySharedIngredients,
-  exchangeRequests,
-  setExchangeRequests,
-}: SocialProps) {
-  const [tab, setTab] = useState<"available" | "mine" | "requests">(
-    "available"
-  );
-  const [posts, setPosts] = useState(friendPosts);
-
-  const norm = (value: string) =>
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  const namesMatch = (a: string, b: string) => {
-    const na = norm(a);
-    const nb = norm(b);
-    return na === nb || na.startsWith(nb) || nb.startsWith(na);
+  myHandle, friendPosts, pantryItems, shareRequests, connections, loading, error,
+  onSetHandle, onInvite, onRespond, onToggleShare, onRequestItem,
+  onResolveRequest, onRefresh,
+}: {
+  myHandle: string | null;
+  friendPosts: FriendPost[];
+  pantryItems: Ingredient[];
+  shareRequests: ShareRequest[];
+  connections: FriendConnection[];
+  loading: boolean;
+  error: string | null;
+  onSetHandle: (handle: string) => Promise<boolean>;
+  onInvite: (handle: string) => Promise<boolean>;
+  onRespond: (id: string, status: "accepted" | "declined") => Promise<void>;
+  onToggleShare: (id: string) => Promise<void>;
+  onRequestItem: (listingId: string) => Promise<boolean>;
+  onResolveRequest: (requestId: string, resolution: "accepted" | "declined" | "cancelled") => Promise<void>;
+  onRefresh: () => void;
+}) {
+  const [tab, setTab] = useState<Tab>("feed");
+  const [handle, setHandle] = useState("");
+  const [invite, setInvite] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  const mine = friendPosts.filter(p => p.friendName === "You");
+  const available = friendPosts.filter(p => p.friendName !== "You");
+  const unshared = pantryItems.filter(i => !i.isShared && i.daysLeft >= 0);
+  const pendingListings = new Set(shareRequests.filter(r => r.direction === "outgoing" && r.status === "pending").map(r => r.listingId));
+  const run = async (key: string, task: () => Promise<unknown>) => {
+    setBusy(key);
+    try { await task(); } finally { setBusy(null); }
   };
-
-  const ingredientMatch = (a: string, b: string) => {
-    const na = norm(a);
-    const nb = norm(b);
-    return (
-      na === nb ||
-      na.includes(nb) ||
-      nb.includes(na) ||
-      na.split(" ").some((part) => part.length > 2 && nb.includes(part))
-    );
-  };
-
-  const hasOutgoingRequestForPost = (post: FriendPost) => {
-    return exchangeRequests.some(
-      (r) =>
-        r.direction === "outgoing" &&
-        r.status !== "declined" &&
-        namesMatch(r.counterpartyName, post.friendName) &&
-        ingredientMatch(r.ingredientName, post.ingredientName)
-    );
-  };
-
-  const toggleRequest = (id: string) => {
-    const post = posts.find((p) => p.id === id);
-    if (!post) return;
-
-    const nextRequested = !post.requested;
-    const reqId = outgoingRequestIdForFriendPost(id);
-
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, requested: nextRequested } : p
-      )
-    );
-
-    setExchangeRequests((prev) => {
-      if (nextRequested) {
-        if (prev.some((r) => r.id === reqId)) return prev;
-        const row: IngredientExchangeRequest = {
-          id: reqId,
-          direction: "outgoing",
-          counterpartyName: post.friendName,
-          counterpartyInitials: post.friendInitials,
-          ingredientName: post.ingredientName,
-          ingredientEmoji: post.ingredientEmoji,
-          quantity: post.quantity,
-          status: "pending",
-        };
-        return [...prev, row];
-      }
-      return prev.filter((r) => r.id !== reqId);
+  const submit = async (kind: "handle" | "invite") => {
+    await run(kind, async () => {
+      const ok = kind === "handle" ? await onSetHandle(handle) : await onInvite(invite);
+      setMessage(ok ? kind === "handle" ? "Handle saved." : "Invitation sent." :
+        kind === "handle" ? "Could not save that handle. Try another one." : "Could not send invitation. Check the handle or existing invitations.");
+      if (ok) { setHandle(""); setInvite(""); }
     });
   };
-
-  const availablePosts = posts
-    .map((p) => ({
-      ...p,
-      requested: p.requested || hasOutgoingRequestForPost(p),
-    }))
-    .filter((p) => !p.requested);
-
-  const urgentPosts = availablePosts.filter((p) => p.urgency === "red");
-  const otherPosts = availablePosts.filter((p) => p.urgency !== "red");
-
-  const outgoing = exchangeRequests.filter((r) => r.direction === "outgoing");
-  const incoming = exchangeRequests.filter((r) => r.direction === "incoming");
-
-  const resolveIncoming = (id: string, status: Exclude<ExchangeRequestStatus, "pending">) => {
-    setExchangeRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status } : r))
-    );
-  };
-
   return (
-    <div className="flex flex-col gap-7 px-6 pt-5 pb-2">
-      <div>
-        <h1 className="font-display text-[34px] leading-[1.1] tracking-[-0.01em] text-stone-900">
-          Community Pantry.
-        </h1>
-        <p className="text-[13px] text-stone-500 mt-3">
-          Claim what&apos;s expiring or share your surplus.
-        </p>
-      </div>
+    <div className="flex flex-col gap-5 px-6 pt-5 pb-8 text-stone-900">
+      <header>
+        <h1 className="font-display text-[34px] leading-tight text-stone-900">Community Pantry.</h1>
+        <p className="text-[13px] text-stone-600 mt-2">Give good food a new home with friends.</p>
+      </header>
+      <nav aria-label="Community Pantry" className="flex gap-2 overflow-x-auto -mx-6 px-6 pb-1">
+        {([ ["feed", "Available"], ["mine", "My posts"], ["requests", "Requests"], ["friends", "Friends"] ] as const).map(([id,label]) =>
+          <button key={id} type="button" onClick={() => { setTab(id); onRefresh(); }}
+            className={`shrink-0 px-4 py-2.5 rounded-full text-[12px] font-medium border ${tab === id ? `bg-stone-900 border-stone-900 text-white ${pressDark}` : `bg-white border-stone-300 text-stone-900 ${pressOutline}`}`}>{label}{id === "requests" && shareRequests.some(r => r.direction === "incoming" && r.status === "pending") ? " •" : ""}</button>)}
+      </nav>
+      {error && <p role="alert" className="text-sm text-red-700">{error} <button type="button" onClick={onRefresh} className="underline">Retry</button></p>}
+      {loading && <p className="text-sm text-stone-600">Updating…</p>}
 
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2">
-          {(
-            [
-              ["available", "From friends"],
-              ["mine", "My posts"],
-              ["requests", "Requests"],
-            ] as const
-          ).map(([id, label]) => {
-            const active = tab === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTab(id)}
-                className={`flex-1 min-w-0 py-2.5 rounded-full text-[12px] font-medium border ${
-                  active
-                    ? `bg-stone-900 text-white border-stone-900 ${pressDark}`
-                    : `bg-white text-stone-700 border-stone-300 ${pressOutline}`
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
+      {tab === "feed" && <section className="space-y-3">
+        <h2 className="text-[11px] uppercase tracking-[0.15em] font-semibold text-stone-600">Available from friends</h2>
+        {available.length === 0 && !loading && <Empty>Nothing shared yet. Connect with friends to see their posts.</Empty>}
+        {available.map(post => <article key={post.id} className="border border-stone-200 rounded-2xl p-4 bg-white">
+          <div className="flex justify-between gap-2 text-[12px] text-stone-600"><span>{post.friendName}</span><span>{post.daysLeft <= 0 ? "Use today" : `${post.daysLeft} days left`}</span></div>
+          <div className="flex items-center gap-3 mt-3"><span className="text-2xl" aria-hidden>{post.ingredientEmoji}</span><div className="flex-1 min-w-0"><h3 className="font-medium text-[16px] text-stone-900 truncate">{post.ingredientName}</h3><p className="text-[12px] text-stone-600">{post.quantity}</p></div></div>
+          <button type="button" disabled={busy !== null || pendingListings.has(post.id)}
+            onClick={() => void run(post.id, () => onRequestItem(post.id))}
+            className={`mt-4 w-full rounded-full py-2.5 text-[13px] font-medium ${pendingListings.has(post.id) ? "bg-stone-100 text-stone-700" : `bg-stone-900 text-white ${pressDark}`} disabled:opacity-60`}>{pendingListings.has(post.id) ? "Requested" : busy === post.id ? "Requesting…" : "Request item"}</button>
+        </article>)}
+      </section>}
+
+      {tab === "mine" && <section className="space-y-5">
+        <div className="rounded-2xl bg-stone-100 p-4">
+          <h2 className="font-display text-[20px]">Share from your pantry</h2>
+          <p className="text-[12px] text-stone-600 mt-1">Only friends you accept can see your posts.</p>
+          {unshared.length === 0 ? <p className="text-[12px] text-stone-600 mt-4">No unshared pantry items available.</p> :
+            <div className="mt-3 space-y-2 max-h-44 overflow-y-auto">{unshared.map(i => <div key={i.id} className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
+              <span>{i.emoji}</span><span className="min-w-0 flex-1 truncate text-[13px]">{i.name}</span><button type="button" disabled={busy !== null} onClick={() => void run(i.id, () => onToggleShare(i.id))} className="text-[12px] font-semibold underline disabled:opacity-50">Share</button>
+            </div>)}</div>}
         </div>
-      </div>
+        <h2 className="text-[11px] uppercase tracking-[0.15em] font-semibold text-stone-600">Your active posts</h2>
+        {mine.length === 0 && !loading && <Empty>No posts yet. Share something from your pantry above.</Empty>}
+        {mine.map(p => <div key={p.id} className="border border-stone-200 rounded-2xl p-4 flex items-center gap-3">
+          <span className="text-2xl">{p.ingredientEmoji}</span><div className="flex-1 min-w-0"><p className="font-medium truncate">{p.ingredientName}</p><p className="text-[12px] text-stone-600">{p.quantity} · Shared with friends</p></div>
+          <button type="button" disabled={busy !== null} onClick={() => { const item = pantryItems.find(i => i.id === p.pantryItemId); if (item) void run(p.id, () => onToggleShare(item.id)); }} className="text-[12px] underline font-medium disabled:opacity-50">Unshare</button>
+        </div>)}
+      </section>}
 
-      {tab === "available" ? (
-        <div className="flex flex-col gap-1">
-          {availablePosts.length === 0 ? (
-            <div className="flex flex-col items-center py-16 gap-3 text-stone-400">
-              <p className="text-[13px] font-medium text-stone-600">
-                No friend listings yet
-              </p>
-              <p className="text-[11px] text-center px-8 leading-relaxed">
-                Community pantry sharing isn’t connected yet. When friends share
-                surplus or expiring items, they’ll show up here.
-              </p>
-            </div>
-          ) : (
-            <>
-              {urgentPosts.length > 0 && (
-                <>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                    <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-medium">
-                      Expiring soon
-                    </h2>
-                  </div>
-                  <div className="flex flex-col gap-3 mb-4">
-                    {urgentPosts.map((post, i) => (
-                      <FriendPostCard
-                        key={post.id}
-                        post={post}
-                        avatarColor={avatarTints[i % avatarTints.length]}
-                        onToggleRequest={toggleRequest}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
+      {tab === "requests" && <section className="space-y-3">
+        <p className="text-[12px] text-stone-600">Accepting a request claims the item and removes it from everyone’s available feed.</p>
+        {shareRequests.length === 0 && !loading && <Empty>No requests yet.</Empty>}
+        {shareRequests.map(r => <article key={r.id} className="border border-stone-200 rounded-2xl p-4">
+          <p className="text-[12px] text-stone-600">{r.direction === "incoming" ? `${r.personName} requested your item` : `Requested from ${r.personName}`}</p>
+          <p className="font-medium mt-2">{r.ingredientEmoji} {r.ingredientName} <span className="text-[12px] font-normal text-stone-600">· {r.quantity}</span></p>
+          {r.status === "pending" ? <div className="flex gap-2 mt-4">
+            {r.direction === "incoming" ? <><button disabled={busy !== null} onClick={() => void run(r.id, () => onResolveRequest(r.id, "declined"))} className="flex-1 py-2 rounded-full border border-stone-300 text-[12px]">Decline</button><button disabled={busy !== null} onClick={() => void run(r.id, () => onResolveRequest(r.id, "accepted"))} className="flex-1 py-2 rounded-full bg-stone-900 text-white text-[12px]">Accept & claim</button></> :
+            <button disabled={busy !== null} onClick={() => void run(r.id, () => onResolveRequest(r.id, "cancelled"))} className="text-[12px] underline">Cancel request</button>}
+          </div> : <p className="mt-3 text-[12px] font-semibold capitalize text-stone-700">{r.status === "accepted" ? r.direction === "incoming" ? "Claimed by friend" : "Claim accepted" : r.status}</p>}
+        </article>)}
+      </section>}
 
-              {otherPosts.length > 0 && (
-                <>
-                  <div className="flex items-center gap-2 mb-3 mt-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
-                    <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-medium">
-                      Surplus available
-                    </h2>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    {otherPosts.map((post, i) => (
-                      <FriendPostCard
-                        key={post.id}
-                        post={post}
-                        avatarColor={
-                          avatarTints[(i + urgentPosts.length) % avatarTints.length]
-                        }
-                        onToggleRequest={toggleRequest}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-            </>
-          )}
+      {tab === "friends" && <section className="space-y-5">
+        <div className="border border-stone-200 rounded-2xl p-4 space-y-3">
+          <p className="text-[13px] font-medium">Your handle: {myHandle ? `@${myHandle}` : "Set one to let friends find you"}</p>
+          {!myHandle && <form onSubmit={e => { e.preventDefault(); void submit("handle"); }} className="flex gap-2">
+            <input aria-label="Choose a handle" value={handle} onChange={e => setHandle(e.target.value.toLowerCase())} placeholder="3–24 letters, numbers, _" pattern="[a-z0-9_]{3,24}" required className="min-w-0 flex-1 border rounded-lg p-2 text-sm text-stone-900 placeholder:text-stone-500" />
+            <button disabled={busy !== null} className="bg-stone-900 text-white rounded-lg px-3 text-xs">Save</button>
+          </form>}
         </div>
-      ) : tab === "mine" ? (
-        <div className="flex flex-col gap-3">
-          <div className="border border-stone-200 rounded-2xl px-4 py-3.5">
-            <p className="text-[12px] text-stone-600 leading-relaxed">
-              <span className="font-medium text-stone-900">Auto-share:</span>{" "}
-              items expiring within 2 days appear here automatically. You can
-              also share surplus manually from your pantry.
-            </p>
-          </div>
-
-          {mySharedIngredients.length === 0 ? (
-            <div className="flex flex-col items-center py-16 gap-3 text-stone-400">
-              <span className="text-3xl opacity-50">🫙</span>
-              <p className="text-[13px] font-medium text-stone-600">
-                Nothing shared yet
-              </p>
-              <p className="text-[11px] text-center px-8 leading-relaxed">
-                Items expiring in 2 days or less will appear here automatically.
-              </p>
-            </div>
-          ) : (
-            mySharedIngredients.map((ing, idx) => (
-              <div
-                key={ing.id}
-                className={`flex items-center gap-4 py-3.5 ${
-                  idx !== 0 ? "border-t border-stone-100" : ""
-                }`}
-              >
-                <div className="w-12 h-12 rounded-full bg-stone-50 flex items-center justify-center text-2xl flex-shrink-0">
-                  {ing.emoji}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${urgencyDot[ing.urgency]}`}
-                    />
-                    <p className="text-[15px] text-stone-900 font-medium truncate">
-                      {ing.name}
-                    </p>
-                  </div>
-                  <p className="text-[12px] text-stone-400 mt-0.5 ml-3.5">
-                    {ing.count > 1 ? `${ing.count} × ` : ""}
-                    {ing.quantity} {ing.unit}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-0.5">
-                  <span
-                    className={`text-[13px] tabular-nums font-medium ${urgencyText[ing.urgency]}`}
-                  >
-                    {ing.daysLeft <= 1 ? "Today" : `${ing.daysLeft}d`}
-                  </span>
-                  {ing.autoShared && (
-                    <span className="text-[10px] text-stone-400 tracking-wide">
-                      Auto
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-6">
-          <p className="text-[12px] text-stone-500 leading-relaxed">
-            Track ingredient requests you&apos;ve sent and requests friends have
-            sent you.
-          </p>
-
-          {outgoing.length > 0 && (
-            <section>
-              <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-medium mb-3">
-                You requested
-              </h2>
-              <div className="flex flex-col gap-3">
-                {outgoing.map((r) => (
-                  <ExchangeRequestRow key={r.id} request={r} />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {incoming.length > 0 && (
-            <section>
-              <h2 className="text-[10px] uppercase tracking-[0.18em] text-stone-500 font-medium mb-3">
-                Requested from you
-              </h2>
-              <div className="flex flex-col gap-3">
-                {incoming.map((r) => (
-                  <ExchangeRequestRow
-                    key={r.id}
-                    request={r}
-                    onResolveIncoming={
-                      r.status === "pending"
-                        ? (resolution) => resolveIncoming(r.id, resolution)
-                        : undefined
-                    }
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {outgoing.length === 0 && incoming.length === 0 && (
-            <div className="flex flex-col items-center py-12 gap-2 text-stone-400">
-              <p className="text-[13px] font-medium text-stone-600">
-                No requests yet
-              </p>
-              <p className="text-[11px] text-center px-8 leading-relaxed">
-                Ingredient requests will appear here once sharing and friendships
-                are connected.
-              </p>
-            </div>
-          )}
-        </div>
-      )}
+        <form onSubmit={e => { e.preventDefault(); void submit("invite"); }} className="flex gap-2">
+          <input aria-label="Friend's handle" value={invite} onChange={e => setInvite(e.target.value.toLowerCase())} placeholder="Friend’s handle" pattern="[a-z0-9_]{3,24}" required className="min-w-0 flex-1 border border-stone-300 rounded-lg p-2 text-sm text-stone-900 placeholder:text-stone-500" />
+          <button disabled={busy !== null} className="bg-stone-900 text-white rounded-lg px-3 text-xs">Invite</button>
+        </form>
+        {message && <p role="status" className="text-xs text-stone-700">{message}</p>}
+        {connections.length === 0 && !loading && <Empty>No friends or invitations yet.</Empty>}
+        {connections.map(c => <div key={c.id} className="border border-stone-200 rounded-2xl p-4 flex items-center justify-between gap-2">
+          <div><p className="text-sm font-medium">{c.name}</p><p className="text-xs text-stone-600">{c.handle ? `@${c.handle} · ` : ""}{c.status === "accepted" ? "Friend" : c.incoming ? "Invited you" : "Invitation sent"}</p></div>
+          {c.incoming && c.status === "pending" && <div className="flex gap-2 text-xs"><button onClick={() => void onRespond(c.id, "declined")} className="underline">Decline</button><button onClick={() => void onRespond(c.id, "accepted")} className="rounded-full bg-stone-900 text-white px-3 py-2">Accept</button></div>}
+        </div>)}
+      </section>}
     </div>
   );
 }
-
-function ExchangeRequestRow({
-  request,
-  onResolveIncoming,
-}: {
-  request: IngredientExchangeRequest;
-  /** When set (incoming + pending), row shows Accept / Decline instead of a static Pending pill. */
-  onResolveIncoming?: (
-    resolution: Exclude<ExchangeRequestStatus, "pending">
-  ) => void;
-}) {
-  const label =
-    request.direction === "outgoing"
-      ? `From ${request.counterpartyName}`
-      : `${request.counterpartyName} asked you`;
-
-  const showIncomingActions =
-    request.direction === "incoming" &&
-    request.status === "pending" &&
-    onResolveIncoming;
-
-  return (
-    <div className="bg-white border border-stone-200 rounded-2xl p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div
-            className={`w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-semibold flex-shrink-0 bg-stone-100 text-stone-700`}
-          >
-            {request.counterpartyInitials}
-          </div>
-          <div className="min-w-0">
-            <p className="text-[11px] text-stone-500">{label}</p>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xl">{request.ingredientEmoji}</span>
-              <p className="text-[14px] font-medium text-stone-900 truncate">
-                {request.ingredientName}
-              </p>
-            </div>
-            <p className="text-[11px] text-stone-400 mt-0.5">{request.quantity}</p>
-          </div>
-        </div>
-        {!showIncomingActions && (
-          <span
-            className={`text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border flex-shrink-0 ${statusStyle[request.status]}`}
-          >
-            {request.status === "pending"
-              ? "Pending"
-              : request.status === "approved"
-              ? "Approved"
-              : "Declined"}
-          </span>
-        )}
-      </div>
-
-      {showIncomingActions && (
-        <div className="flex gap-2 mt-4 pt-3 border-t border-stone-100">
-          <button
-            type="button"
-            onClick={() => onResolveIncoming("declined")}
-            className={`flex-1 py-2.5 rounded-full text-[12px] font-medium border border-stone-300 bg-white text-stone-800 ${pressOutline}`}
-          >
-            Decline
-          </button>
-          <button
-            type="button"
-            onClick={() => onResolveIncoming("approved")}
-            className={`flex-1 py-2.5 rounded-full text-[12px] font-medium bg-stone-900 text-white ${pressDark}`}
-          >
-            Accept
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function FriendPostCard({
-  post,
-  avatarColor,
-  onToggleRequest,
-}: {
-  post: FriendPost;
-  avatarColor: string;
-  onToggleRequest: (id: string) => void;
-}) {
-  const uDot: Record<UrgencyLevel, string> = {
-    red: "bg-red-500",
-    yellow: "bg-amber-400",
-    green: "bg-emerald-500",
-  };
-
-  return (
-    <div className="bg-white border border-stone-200 rounded-2xl p-4">
-      <div className="flex items-center gap-3 mb-3.5">
-        <div
-          className={`w-10 h-10 rounded-full flex items-center justify-center text-[12px] font-semibold ${avatarColor}`}
-        >
-          {post.friendInitials}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[14px] font-medium text-stone-900 truncate">
-            {post.friendName}
-          </p>
-          <p className="text-[11px] text-stone-500">
-            {post.isAutoShared ? "Sharing expiring item" : "Sharing surplus"}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${uDot[post.urgency]}`} />
-          <span className="text-[11px] text-stone-600 tabular-nums">
-            {post.daysLeft <= 1 ? "1 day" : `${post.daysLeft} days`}
-          </span>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-3 pt-3 border-t border-stone-100">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="text-2xl flex-shrink-0">{post.ingredientEmoji}</span>
-          <div className="min-w-0">
-            <p className="text-[14px] font-medium text-stone-900 truncate">
-              {post.ingredientName}
-            </p>
-            <p className="text-[11px] text-stone-400">{post.quantity}</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => onToggleRequest(post.id)}
-          className={`px-4 py-2 rounded-full text-[12px] font-medium flex-shrink-0 ${
-            post.requested
-              ? `bg-white text-stone-700 border border-stone-300 ${pressOutline}`
-              : `bg-stone-900 text-white ${pressDark}`
-          }`}
-        >
-          {post.requested ? "Requested" : "Request"}
-        </button>
-      </div>
-    </div>
-  );
+function Empty({ children }: { children: React.ReactNode }) {
+  return <p className="text-[13px] text-stone-600 py-8 text-center">{children}</p>;
 }

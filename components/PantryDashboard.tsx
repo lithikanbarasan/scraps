@@ -11,7 +11,7 @@ interface PantryDashboardProps {
   error: string | null;
   saving: boolean;
   onRetry: () => void;
-  onToggleShare: (id: string) => void;
+  onToggleShare: (id: string) => Promise<void>;
   onUpdateIngredient: (id: string, updates: Partial<Ingredient>) => Promise<boolean>;
   onRemoveIngredient: (id: string) => Promise<boolean>;
 }
@@ -240,29 +240,26 @@ export default function PantryDashboard({
               <span
                 className={`text-[13px] tabular-nums font-medium ${urgencyText[ing.urgency]}`}
               >
-                {ing.daysLeft === 0
+                {ing.daysLeft < 0
+                  ? `Expired ${Math.abs(ing.daysLeft)}d ago`
+                  : ing.daysLeft === 0
                   ? "Today"
                   : ing.daysLeft === 1
                   ? "1 day"
                   : `${ing.daysLeft} days`}
               </span>
-              {ing.autoShared ? (
-                <span className="text-[10px] text-stone-400 tracking-wide">
-                  Auto-shared
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => onToggleShare(ing.id)}
-                  className={`text-[10px] tracking-wide rounded px-1 py-0.5 ${pressOutline} ${
-                    ing.isShared
-                      ? "text-stone-900 font-medium"
-                      : "text-stone-400 hover:text-stone-700"
-                  }`}
-                >
-                  {ing.isShared ? "Shared" : "Share"}
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={saving || (ing.daysLeft < 0 && !ing.isShared)}
+                onClick={() => void onToggleShare(ing.id)}
+                className={`mt-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-50 ${
+                  ing.isShared
+                    ? `bg-white border-stone-400 text-stone-900 ${pressOutline}`
+                    : `bg-stone-900 border-stone-900 text-white ${pressDark}`
+                }`}
+              >
+                {ing.isShared ? "Unshare" : ing.daysLeft < 0 ? "Expired" : "Share"}
+              </button>
             </div>
           </div>
         ))}
@@ -338,7 +335,9 @@ export default function PantryDashboard({
                     <span
                       className={`text-[12px] font-medium ${urgencyText[getUrgency(getDaysLeft(draftExpiry))]}`}
                     >
-                      {getDaysLeft(draftExpiry) <= 0
+                      {getDaysLeft(draftExpiry) < 0
+                        ? `Expired ${Math.abs(getDaysLeft(draftExpiry))} days ago`
+                        : getDaysLeft(draftExpiry) === 0
                         ? "Expires today"
                         : `${getDaysLeft(draftExpiry)} days left`}
                     </span>
@@ -372,6 +371,16 @@ export default function PantryDashboard({
                 className={`w-full bg-stone-900 text-white font-medium py-3.5 rounded-full text-[13px] tracking-wide mt-2 ${pressDark}`}
               >
                 {saving ? "Saving…" : "Save changes"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void onToggleShare(detail.id)}
+                disabled={saving || (detail.daysLeft < 0 && !detail.isShared)}
+                className={`w-full py-3 rounded-full text-[13px] font-semibold border disabled:opacity-50 ${detail.isShared
+                  ? `border-stone-400 text-stone-900 bg-white ${pressOutline}`
+                  : `border-stone-900 text-stone-900 bg-stone-100 ${pressOutline}`}`}
+              >
+                {detail.isShared ? "Unshare from friends" : detail.daysLeft < 0 ? "Expired — update date to share" : "Share with friends"}
               </button>
               <button
                 type="button"
