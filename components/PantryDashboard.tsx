@@ -283,8 +283,7 @@ export default function PantryDashboard({
                   {detail.name}
                 </h2>
                 <p className="text-[13px] text-stone-500 mt-1">
-                  {detail.count > 1 ? `${detail.count} × ` : ""}
-                  {detail.quantity} {detail.unit}
+                {detail.count} {detail.unit === "count" ? "items" : detail.unit}
                 </p>
               </div>
             </div>
@@ -292,7 +291,7 @@ export default function PantryDashboard({
             <div className="flex flex-col gap-5">
               <div>
                 <label className="text-[10px] uppercase tracking-[0.15em] text-stone-400 font-medium">
-                  How many (tap − / + after using one)
+                  Quantity
                 </label>
                 <div className="flex items-center gap-4 mt-2">
                   <button
@@ -350,9 +349,9 @@ export default function PantryDashboard({
                   Estimated cost
                 </label>
                 <div className="relative">
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[15px] text-stone-400 pt-3">
-                    $
-                  </span>
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[15px] text-stone-400">
+                  $
+                </span>
                   <input
                     type="number"
                     value={draftCost}
