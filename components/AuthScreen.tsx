@@ -130,6 +130,14 @@ export default function AuthScreen({
             {submitting ? "Please wait…" : mode === "signIn" ? "Sign in" : "Create account"}
           </button>
         </form>
+        {mode === "signIn" && (
+          <a
+            href="/forgot-password"
+            className="mt-4 block text-center text-sm text-stone-900 underline"
+          >
+            Forgot password?
+          </a>
+        )}
 
         <button
           type="button"
