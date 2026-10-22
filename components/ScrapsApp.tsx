@@ -11,6 +11,7 @@ import EditProfileSheet from "./EditProfileSheet";
 import AuthScreen from "./AuthScreen";
 import CompleteProfileScreen from "./CompleteProfileScreen";
 import { pressFlat } from "./pressableStyles";
+import GuestApp from "./GuestApp";
 import {
   Ingredient,
   FriendPost,
@@ -124,6 +125,7 @@ export default function ScrapsApp() {
   const supabase = useMemo(() => createClient(), []);
 
   const [session, setSession] = useState<Session | null>(null);
+  const [guest, setGuest] = useState(false); 
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -512,7 +514,16 @@ export default function ScrapsApp() {
   }
 
   if (!session) {
-    return <AuthScreen supabase={supabase} />;
+    if (guest) {
+      return <GuestApp onExit={() => setGuest(false)} />;
+    }
+  
+    return (
+      <AuthScreen
+        supabase={supabase}
+        onGuest={() => setGuest(true)}
+      />
+    );
   }
 
   if (loadingProfile) {
