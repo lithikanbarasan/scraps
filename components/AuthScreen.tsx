@@ -9,8 +9,10 @@ type Mode = "signIn" | "signUp";
 
 export default function AuthScreen({
   supabase,
+  onGuest,
 }: {
   supabase: SupabaseClient<Database>;
+  onGuest?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
@@ -130,6 +132,15 @@ export default function AuthScreen({
             {submitting ? "Please wait…" : mode === "signIn" ? "Sign in" : "Create account"}
           </button>
         </form>
+        {onGuest && (
+          <button
+            type="button"
+            onClick={onGuest}
+            className={`mt-4 w-full rounded-full border border-stone-300 py-3 text-[13px] font-medium text-stone-900 ${pressOutline}`}
+          >
+            Continue as guest
+          </button>
+        )}
         {mode === "signIn" && (
           <a
             href="/forgot-password"
